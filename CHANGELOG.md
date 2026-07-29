@@ -9,6 +9,9 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- This repository. Phase 1 was built inside the TaioTech hub repository at
+  `scuttle/` because this one did not exist yet; it now lives here with that
+  history intact, and deploys to scuttle.taiotech.com.
 - Phase 1 of the game: sideways-biased movement, one band of seeded dry-sand
   lanes, and three buttons. Enough to find out whether the asymmetry is fun,
   and deliberately nothing else — see the spec for what is still missing.

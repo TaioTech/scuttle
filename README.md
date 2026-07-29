@@ -50,29 +50,14 @@ All four must pass before anything is called done.
 
 ## Where it lives
 
-This project is currently **staged inside the hub repository** at `scuttle/`,
-because `TaioTech/scuttle` does not exist yet and the credentials available to
-the session that built it could not create a repository. It is otherwise a
-complete standalone project: its own dependencies, its own gates, its own CI
-workflow. It imports nothing from the hub and the hub imports nothing from it.
+Source is [`TaioTech/scuttle`](https://github.com/TaioTech/scuttle); the
+prototype deploys to [scuttle.taiotech.com](https://scuttle.taiotech.com). The
+[TaioTech hub](https://taiotech.com/scuttle) carries the project page that links
+here, and nothing else — this repository owns the code and the spec.
 
-To move it to its own repository once that repository exists:
-
-```bash
-# From the hub checkout, with scuttle/ present
-cp -R scuttle /tmp/scuttle && cd /tmp/scuttle
-rm -rf node_modules .next
-git init && git add -A
-git commit -m "feat: scuttle phase 1 — movement prototype"
-git remote add origin git@github.com:TaioTech/scuttle.git
-git push -u origin main
-```
-
-Then, in the hub, delete `scuttle/` along with the three things that only exist
-to accommodate it: the `scuttle/**` entry in `eslint.config.mjs`, the
-`scuttle/**` entry in `tsconfig.json`, and the `scuttle` job in
-`.github/workflows/ci.yml`. The `turbopack.root` line in `next.config.ts` can go
-at the same time.
+Phase 1 was built inside the hub repository, at `scuttle/`, because this
+repository did not exist yet. It was extracted with its history intact, so the
+commit describing the movement work is the one that originally landed there.
 
 ## Docs
 
