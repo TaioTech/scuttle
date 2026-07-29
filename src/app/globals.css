@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+/*
+ * Scuttle shares the TaioTech near-black base so the game and the hub read as
+ * one workshop. Always dark — the beach is drawn in warm sand tones against it,
+ * and a second palette to keep those legible in a light theme would be work
+ * with nothing on the other side of it.
+ *
+ * The sand tones are also in `src/lib/palette.ts`, because a canvas cannot
+ * resolve a custom property. The two have to be edited together.
+ */
+:root {
+  --background: #09090b;
+  --foreground: #fafafa;
+  --muted: #a1a1aa;
+  --line: #27272a;
+  --accent: #f97316;
+  --sand: #17130f;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-sand: var(--sand);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html,
+body {
+  height: 100%;
+  /*
+   * A game played by holding buttons at the bottom of the screen is a game
+   * played on top of every gesture a mobile browser wants to claim: pull to
+   * refresh, rubber-band scroll, double-tap to zoom. All of them have to go.
+   */
+  overscroll-behavior: none;
+  touch-action: manipulation;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
+  }
+}
