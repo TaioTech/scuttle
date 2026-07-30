@@ -27,10 +27,6 @@ import {
 } from "./board";
 import { sweptOverlap, type Box } from "./collision";
 import {
-  type Frisbee,
-  frisbeeAt,
-  frisbeeBox,
-  frisbeeLocksOn,
   seagullAt,
   seagullBox,
   seagullLocksOn,
@@ -138,8 +134,6 @@ export type SimState = {
    */
   seagullX: number;
   seagullRow: number;
-  /** The row a frisbee was aimed at, fixed when it was let go. */
-  frisbeeRow: number;
 };
 
 /** How many shells have been picked up. */
@@ -178,17 +172,12 @@ export function createSim(): SimState {
     shells: 0,
     seagullX: BOARD_WIDTH / 2,
     seagullRow: 0,
-    frisbeeRow: 0,
   };
 }
 
 /** The roamers as they stand, for the collision pass and the renderer. */
-export function roamersOf(
-  state: SimState,
-  seed: number,
-): { frisbee: Frisbee | null; seagull: Seagull | null } {
+export function roamersOf(state: SimState): { seagull: Seagull | null } {
   return {
-    frisbee: frisbeeAt(seed, state.elapsed, state.frisbeeRow),
     seagull: seagullAt(state.elapsed, state.seagullX, state.seagullRow),
   };
 }
@@ -214,19 +203,7 @@ export function formatElapsed(ticks: number): string {
  *
  * Returns a new state; the argument is not modified.
  */
-export function stepSim(
-  state: SimState,
-  input: Input,
-  beach: Beach,
-  /**
-   * The day's seed, for the roamers that are not part of any lane.
-   *
-   * Passed rather than reached for, and defaulted so every test that only
-   * cares about movement or lanes keeps working — a beach with no seed simply
-   * has no frisbee on it, which is the same fixture those tests already used.
-   */
-  seed = 0,
-): SimState {
+export function stepSim(state: SimState, input: Input, beach: Beach): SimState {
   if (!state.alive || state.won) return state;
 
   // The clock starts on the first thing the player does and runs until the sea.
@@ -303,14 +280,12 @@ export function stepSim(
   const locking = seagullLocksOn(elapsed);
   const seagullX = locking ? x : state.seagullX;
   const seagullRow = locking ? row : state.seagullRow;
-  const frisbeeRow = frisbeeLocksOn(elapsed) ? row : state.frisbeeRow;
 
   const next: SimState = {
     ...state,
     tick,
     seagullX,
     seagullRow,
-    frisbeeRow,
     x,
     row,
     step,
@@ -328,10 +303,7 @@ export function stepSim(
 
   next.alive =
     immune > 0 ||
-    !(
-      struck(next, at, fromX, fromY) ||
-      caughtByRoamer(next, seed, fromX, fromY)
-    );
+    !(struck(next, at, fromX, fromY) || caughtByRoamer(next, fromX, fromY));
   next.shells = gathered(next, at, fromY);
 
   return next;
@@ -482,9 +454,8 @@ function clamp(value: number, min: number, max: number): number {
 /**
  * Whether any of the roamers caught the crab this tick.
  *
- * Swept like everything else — the frisbee is the fastest thing on the beach
- * and testing where it ended up would let it pass clean through a crab, which
- * is the exact complaint `collision.ts` exists to prevent.
+ * Swept like everything else, so nothing can pass clean through a crab between
+ * two ticks — the exact complaint `collision.ts` exists to prevent.
  *
  * The seagull is only lethal once it is actually down. Its warning is a shadow
  * and a shadow does not kill you; the whole point of the lead time is that the
@@ -492,7 +463,6 @@ function clamp(value: number, min: number, max: number): number {
  */
 function caughtByRoamer(
   state: SimState,
-  seed: number,
   fromX: number,
   fromY: number,
 ): boolean {
@@ -509,15 +479,6 @@ function caughtByRoamer(
     halfWidth: PLAYER_HALF_W,
     halfHeight: PLAYER_HALF_H,
   };
-
-  const previousElapsed = Math.max(0, state.elapsed - 1);
-
-  const frisbee = frisbeeAt(seed, state.elapsed, state.frisbeeRow);
-  if (frisbee !== null) {
-    const before = frisbeeAt(seed, previousElapsed, state.frisbeeRow);
-    const start = before === null ? frisbeeBox(frisbee) : frisbeeBox(before);
-    if (sweptOverlap(crabStart, crabEnd, start, frisbeeBox(frisbee))) return true;
-  }
 
   const seagull = seagullAt(state.elapsed, state.seagullX, state.seagullRow);
   if (seagull !== null && seagull.striking) {

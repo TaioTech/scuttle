@@ -203,6 +203,28 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   next frame. On a phone that fires when the URL bar collapses, not only on
   rotation. Resizing now repaints the final frame.
 
+### Removed
+
+- The frisbee, pulled after its first real playthrough. It was aimed at the
+  lane the crab was standing in and re-aimed at wherever the player had got to
+  every nine seconds, which played exactly as it reads: it chased. Measured over
+  four hundred seeds, sixty-seven per cent of throws covered the lane the crab
+  stood in and sixty-nine per cent covered the lane it had to step into, and the
+  pair it covered was never more than one lane away. It crosses at fifty-six
+  board units a second against the crab's forty-six, so there is no outrunning
+  it sideways, and the crab cannot step backwards — the only escape was forward,
+  through the second lane it also covered.
+
+  That is the dog's specified behaviour rather than the frisbee's, acquired
+  without the readability rule the spec demands of a pursuer. Aiming it was a
+  real answer to a real problem, which is why this is a removal and not a
+  tuning pass: a frisbee thrown at a seeded row is a hazard most runs never
+  meet, since only eleven of thirty-two lanes are ever on screen. Both pursuing
+  hazards are now one deferred decision, to be answered together under a rule
+  that makes a pursuer readable. The seagull is unaffected and remains the only
+  roamer; `stepSim` and `roamersOf` no longer take the day's seed, since the
+  frisbee was the only thing that wanted it.
+
 ### Changed
 
 - The crab's claws straddle the edge of its shell rather than being held well

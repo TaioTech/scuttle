@@ -7,10 +7,9 @@ import {
   plantingProgress,
   surfWashingAt,
 } from "./board";
-import type { Frisbee, Seagull } from "./roamers";
+import type { Seagull } from "./roamers";
 import {
   BOARD_WIDTH,
-  FRISBEE_HALF,
   SEAGULL_HALF_W,
   GAIT_FULL_SPEED,
   GAIT_SWING,
@@ -44,7 +43,6 @@ const CLAW_OVERHANG = 1.4;
 
 /** The roamers as one thing to hand the renderer. */
 export type Roamers = {
-  frisbee: Frisbee | null;
   seagull: Seagull | null;
 };
 
@@ -206,24 +204,14 @@ export function drawFrame(
   }
 
   // The second pass. Everything that is not lane-bound is drawn here, in board
-  // coordinates, after every lane and before the crab — so a frisbee is
-  // honestly half in one lane and half in the next instead of being clipped
-  // into whichever row happened to draw it, and so the player never loses
-  // themselves under something in the air.
-  if (roamers !== null) {
-    if (roamers.seagull !== null) {
-      ctx.save();
-      ctx.translate(toScreenX(roamers.seagull.x), toScreenY(roamers.seagull.y));
-      drawSeagull(ctx, view.scale, roamers.seagull);
-      ctx.restore();
-    }
-
-    if (roamers.frisbee !== null) {
-      ctx.save();
-      ctx.translate(toScreenX(roamers.frisbee.x), toScreenY(roamers.frisbee.y));
-      drawFrisbee(ctx, view.scale, roamers.frisbee);
-      ctx.restore();
-    }
+  // coordinates, after every lane and before the crab — so a roamer is never
+  // clipped into whichever row happened to draw it, and so the player never
+  // loses themselves under something in the air.
+  if (roamers !== null && roamers.seagull !== null) {
+    ctx.save();
+    ctx.translate(toScreenX(roamers.seagull.x), toScreenY(roamers.seagull.y));
+    drawSeagull(ctx, view.scale, roamers.seagull);
+    ctx.restore();
   }
 
   // How fast the crab is actually travelling, in board units per second. Only
@@ -700,54 +688,6 @@ function drawUmbrella(
   ctx.fill();
 
   ctx.restore();
-}
-
-/**
- * A frisbee, plus the mark on the sand directly under it.
- *
- * The disc is drawn at the box's full extent and the mark repeats it, because
- * the thing is airborne and a player judging whether they can pass beneath it
- * has nothing else to measure against. Its spin comes from its flight progress
- * — a closed form of the run's clock — so two devices at the same tick draw the
- * same disc at the same angle.
- */
-function drawFrisbee(
-  ctx: CanvasRenderingContext2D,
-  scale: number,
-  frisbee: Frisbee,
-): void {
-  const width = FRISBEE_HALF.width * scale;
-  const height = FRISBEE_HALF.height * scale;
-
-  // The disc rolls as it flies; the squash is the spin seen edge-on.
-  const spin = Math.abs(Math.cos(frisbee.progress * Math.PI * 9));
-
-  ctx.fillStyle = PALETTE.frisbee;
-  ctx.beginPath();
-  ctx.ellipse(0, 0, width, Math.max(height * 0.3, height * spin), 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.strokeStyle = PALETTE.frisbeeRim;
-  ctx.lineWidth = Math.max(1, 0.5 * scale);
-  ctx.beginPath();
-  ctx.ellipse(
-    0,
-    0,
-    width * 0.6,
-    Math.max(height * 0.18, height * spin * 0.6),
-    0,
-    0,
-    Math.PI * 2,
-  );
-  ctx.stroke();
-
-  // The honest box, stated plainly around the disc. Without it the squash of
-  // the spin makes the thing look thinner than it kills from, twice a cycle.
-  ctx.strokeStyle = PALETTE.frisbee;
-  ctx.lineWidth = Math.max(1, 0.4 * scale);
-  ctx.globalAlpha = 0.45;
-  ctx.strokeRect(-width, -height, width * 2, height * 2);
-  ctx.globalAlpha = 1;
 }
 
 /**

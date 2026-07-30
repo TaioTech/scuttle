@@ -3,48 +3,38 @@
  *
  * Every hazard in `board.ts` is a thing a row contains: it is generated from
  * the row's seed, it lives in the row's coordinate space, and it is drawn
- * inside the row's slice of the render loop. These are not. A frisbee is
- * airborne and overlaps two rows at once, and a seagull strikes a patch of
- * sand rather than a lane.
+ * inside the row's slice of the render loop. A seagull is not: it strikes a
+ * patch of sand rather than a lane.
  *
- * So they carry a position in continuous board coordinates and are resolved
+ * So it carries a position in continuous board coordinates and is resolved
  * separately — one collision pass over roamers, one render pass after every
  * lane. That is the whole structural difference, and keeping it in its own
  * module is what stops `board.ts`'s guarantee that a lane is crossable from
  * quietly acquiring exceptions it cannot actually enforce.
  *
- * Pure, like the rest of `lib/`, and deliberately stateless: both are closed
- * forms of the run's clock, so neither adds a field to `SimState` and neither
- * can drift. The pursuing hazard `scuttle.md` also specifies is the one that
- * would, and it is deferred for exactly that reason — see the spec.
+ * Pure, like the rest of `lib/`, and deliberately stateless: a closed form of
+ * the run's clock, so it cannot drift.
+ *
+ * Both hazards `scuttle.md` describes as pursuing are absent here, and that is
+ * now one decision rather than two. The dog was always deferred. The frisbee
+ * was built and then cut, because aiming it at the crab's current row gave it
+ * the dog's specified behaviour without the dog's specified fairness rule: two
+ * thirds of throws covered the lane the player was standing in, it crossed
+ * faster than the crab runs sideways, and the only escape was forward through
+ * the lane it also covered. The spec asks a pursuer to be readable — to commit
+ * to a direction for a beat, or lose interest — and neither hazard comes back
+ * until that rule exists and is tested. `git show b5e50c4` has the flight
+ * arithmetic and its tests when it does.
  */
 
 import {
-  BOARD_WIDTH,
-  DRY_LANES,
-  FRISBEE_ARC_LANES,
-  FRISBEE_FLIGHT_TICKS,
-  FRISBEE_HALF,
-  FRISBEE_PERIOD_TICKS,
   LANE_HEIGHT,
   SEAGULL_HALF_W,
   SEAGULL_PERIOD_TICKS,
   SEAGULL_STRIKE_TICKS,
   SEAGULL_WARN_TICKS,
 } from "./constants";
-import { deriveRng, rangeFloat } from "./rng";
 import type { Box } from "./collision";
-
-/** A frisbee in flight, or the fact that none is. */
-export type Frisbee = {
-  /** Centre in board units. `y` is in board units too, not a row index. */
-  x: number;
-  y: number;
-  /** Which way it is travelling, for the art to lean into. */
-  direction: 1 | -1;
-  /** How far through its flight, zero to one, for the spin. */
-  progress: number;
-};
 
 /** A seagull's attention: where it is aimed and how far along it is. */
 export type Seagull = {
@@ -59,61 +49,6 @@ export type Seagull = {
 /** The vertical centre of a row, in board units. */
 function rowY(row: number): number {
   return row * LANE_HEIGHT + LANE_HEIGHT / 2;
-}
-
-/**
- * The frisbee in the air at this point in the run, if there is one.
- *
- * A closed form of the run's clock and the day's seed, like every position in
- * `board.ts` and for the same reason: a throw accumulated tick by tick would
- * drift, and two devices an hour into the same day would be watching different
- * frisbees.
- *
- * Its centre climbs a full lane and falls back over the flight, so it always
- * overlaps two rows and the pair it overlaps changes as it goes. That is what
- * "arcs across two lanes at once" has to mean for something with a hitbox.
- */
-export function frisbeeAt(
-  seed: number,
-  elapsed: number,
-  lockRow: number,
-): Frisbee | null {
-  // Nothing in the air until the first throw is due, so the opening stays the
-  // opening. The ramp softens the lanes and it cannot soften something that
-  // arrives from off the board.
-  if (elapsed < FRISBEE_PERIOD_TICKS) return null;
-  const throwIndex = Math.floor(elapsed / FRISBEE_PERIOD_TICKS);
-  const into = elapsed - throwIndex * FRISBEE_PERIOD_TICKS;
-  if (into >= FRISBEE_FLIGHT_TICKS) return null;
-
-  const rng = deriveRng(seed, 9_001 + throwIndex);
-  const direction: 1 | -1 = rng() < 0.5 ? -1 : 1;
-
-  // Thrown across the band the crab was in when it was let go, offset by a
-  // lane or so. A frisbee sent to a seeded row is a hazard most runs never
-  // meet — the beach is thirty-two lanes and only eleven are ever on screen,
-  // so a fixed row is overwhelmingly likely to be somewhere the player is not.
-  // Aimed instead, it is a thing that happens to you, and it stays fair
-  // because it crosses sideways from off the board: it is seen coming and it
-  // is dodged by moving, never by having guessed right.
-  const row = clamp(
-    lockRow + Math.round(rangeFloat(rng, -1.4, 1.4)),
-    1,
-    Math.max(1, DRY_LANES - 1),
-  );
-
-  const progress = into / FRISBEE_FLIGHT_TICKS;
-  const travel = BOARD_WIDTH + FRISBEE_HALF.width * 4;
-  const from = direction > 0 ? -FRISBEE_HALF.width * 2 : BOARD_WIDTH + FRISBEE_HALF.width * 2;
-
-  return {
-    x: from + direction * travel * progress,
-    // A full sine hump: up one lane and back down, so the two rows it is
-    // currently in are never in doubt and never the same two for long.
-    y: rowY(row) + Math.sin(progress * Math.PI) * FRISBEE_ARC_LANES * LANE_HEIGHT,
-    direction,
-    progress,
-  };
 }
 
 /**
@@ -151,11 +86,6 @@ export function seagullAt(
   };
 }
 
-/** Whether this tick is the one a frisbee is let go on. */
-export function frisbeeLocksOn(elapsed: number): boolean {
-  return elapsed >= FRISBEE_PERIOD_TICKS && elapsed % FRISBEE_PERIOD_TICKS === 0;
-}
-
 /** Whether this tick is the one a seagull picks its target on. */
 export function seagullLocksOn(elapsed: number): boolean {
   return elapsed > 0 && elapsed % SEAGULL_PERIOD_TICKS === 0;
@@ -169,19 +99,4 @@ export function seagullBox(seagull: Seagull): Box {
     halfWidth: SEAGULL_HALF_W,
     halfHeight: LANE_HEIGHT / 2,
   };
-}
-
-/** The box a frisbee kills from, which is the same box its art states. */
-export function frisbeeBox(frisbee: Frisbee): Box {
-  return {
-    x: frisbee.x,
-    y: frisbee.y,
-    halfWidth: FRISBEE_HALF.width,
-    halfHeight: FRISBEE_HALF.height,
-  };
-}
-
-
-function clamp(value: number, min: number, max: number): number {
-  return value < min ? min : value > max ? max : value;
 }

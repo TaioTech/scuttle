@@ -28,6 +28,7 @@ import {
   formatElapsed,
   type Input,
   playerY,
+  roamersOf,
   shellsTaken,
   type SimState,
   stepSim,
@@ -694,5 +695,35 @@ describe("shells", () => {
       if (!state.alive || state.won) break;
     }
     expect(shellsTaken(state)).toBeLessThanOrEqual(shellCount(SEED));
+  });
+});
+
+describe("the roamers", () => {
+  it("is the seagull and nothing else", () => {
+    // The frisbee was pulled on 2026-07-30 for aiming itself at the crab's own
+    // row — the dog's specified behaviour without the dog's fairness rule. It
+    // comes back with the dog and under a rule that makes a pursuer readable,
+    // so until then a second roamer appearing here is a regression rather than
+    // a feature. Asserted on the shape rather than on a colour or a hitbox
+    // because that is the thing a reintroduction cannot avoid changing.
+    let state = createSim();
+    for (let t = 0; t < 3_000; t += 1) {
+      state = stepSim(state, t % 3 === 0 ? RIGHT : LEFT, EMPTY);
+      expect(Object.keys(roamersOf(state))).toEqual(["seagull"]);
+    }
+    // Long enough to have covered several of the old throw periods.
+    expect(state.elapsed).toBe(3_000);
+  });
+
+  it("cannot kill a crab that is standing on empty sand out of the bird's reach", () => {
+    // The promenade is the one row the seagull refuses, so on an empty beach it
+    // is the one place where a death would have to have come from something
+    // that crosses the board on its own. Nothing does any more.
+    let state = createSim();
+    for (let t = 0; t < 5_000; t += 1) {
+      state = stepSim(state, t % 2 === 0 ? RIGHT : LEFT, EMPTY);
+    }
+    expect(state.row).toBe(0);
+    expect(state.alive).toBe(true);
   });
 });

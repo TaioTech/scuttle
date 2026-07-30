@@ -275,31 +275,6 @@ export const SEAGULL_STRIKE_TICKS = 22;
 /** Half the width of the patch a seagull strike covers, in board units. */
 export const SEAGULL_HALF_W = 8;
 
-/**
- * Ticks between frisbee throws, and how long one is in the air.
- *
- * A frisbee crosses the board rather than patrolling a lane, and it is in the
- * air for a good deal less than the gap between throws — it is an interruption
- * to be waited out, not a second set of lanes to solve.
- */
-export const FRISBEE_PERIOD_TICKS = 540;
-
-/** Ticks a frisbee spends crossing the board. */
-export const FRISBEE_FLIGHT_TICKS = 150;
-
-/** Half the width and half the height of a frisbee's box, in board units. */
-export const FRISBEE_HALF = { width: 5, height: 4 } as const;
-
-/**
- * How many lanes a frisbee rises and falls across its flight.
- *
- * The parent spec calls it a hazard that "arcs across two lanes at once", which
- * is what this is: its centre travels a full lane up the beach and back down
- * again, so at any moment it overlaps two rows and the pair it overlaps changes
- * as it flies.
- */
-export const FRISBEE_ARC_LANES = 1;
-
 /** Proportion of still lanes where one blocker is an umbrella that plants. */
 export const UMBRELLA_CHANCE = 0.35;
 

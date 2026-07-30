@@ -155,9 +155,6 @@ export const PALETTE = {
   umbrellaShade: "#8a5c50",
   umbrellaPole: "#6a6058",
 
-  /** A frisbee in the air, and the mark on the sand it kills from. */
-  frisbee: "#84cc16",
-  frisbeeRim: "#bef264",
 
   /**
    * The seagull's warning and the bird itself.

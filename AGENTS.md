@@ -16,11 +16,13 @@ across the beach is fast and fluid while moving down it is slow and committed.
 One seeded run a day, identical for everyone, derived from the date, with no
 backend.
 
-The spec lives at [`specs/scuttle.md`](specs/scuttle.md). **Only phase 1 is
-built**: the movement, one band of seeded dry-sand lanes, and three buttons. The
-tide, the surf, the seagull, the dog, the frisbee, collectibles, results,
-streaks and sharing are all specified and none of them exist. Read the spec
-before assuming a missing thing is an oversight.
+The spec lives at [`specs/scuttle.md`](specs/scuttle.md). The movement, the
+seeded lanes, the tide, the surf, the seagull, the shells and the results screen
+are built. **The two pursuing hazards are not**: the dog was deferred before it
+shipped, and the frisbee was built, played, and pulled on 2026-07-30 for the
+same reason — see question 6 and question 7 in
+[`specs/sprites.md`](specs/sprites.md). Streaks and sharing are specified and do
+not exist. Read the spec before assuming a missing thing is an oversight.
 
 Scuttle links back to the hub at taiotech.com and is otherwise independent of
 it. See the hub's `docs/WORKSHOP.md` for how the repos relate.

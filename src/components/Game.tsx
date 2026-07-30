@@ -144,7 +144,7 @@ export default function Game() {
         current,
         current.alive ? pending / TICK_MS : 1,
         size,
-        roamersOf(current, seed),
+        roamersOf(current),
       );
     };
 
@@ -179,7 +179,7 @@ export default function Game() {
         };
         tapped.current = false;
         previous = current;
-        current = stepSim(current, input, beach, seed);
+        current = stepSim(current, input, beach);
         // The instant the step begins, not when the button was pressed: the
         // press might have been buffered, and what the player is being told is
         // that control has just left them.
