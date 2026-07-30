@@ -4,6 +4,7 @@ import {
   hazardCenterAt,
   hazardStepPerTick,
   laneAt,
+  laneStrength,
   type Lane,
   minGapOf,
 } from "./board";
@@ -11,11 +12,16 @@ import {
   BEACH_LANES,
   BOARD_WIDTH,
   CYCLE_SPAN,
+  DRIFT_COUNT,
+  DRIFT_SPEED,
+  DRIFT_WIDTH,
   DT,
   MIN_GAP,
   PLAYER_HALF_W,
+  RAMP_LANES,
   SAFE_LANE_INTERVAL,
   SEA_ROW,
+  STILL_WIDTH,
   WRAP_MARGIN,
 } from "./constants";
 import { seedForDay } from "./rng";
@@ -145,6 +151,81 @@ describe("lane layout", () => {
       for (const lane of beach(seedForDay(day))) {
         if (lane.kind === "safe" || lane.kind === "sea") continue;
         expect(lane.hazards.length).toBeGreaterThan(0);
+        for (const gap of gapsOf(lane)) {
+          expect(gap).toBeGreaterThanOrEqual(minGapOf(lane) - 1e-9);
+        }
+      }
+    }
+  });
+});
+
+describe("laneStrength", () => {
+  it("starts the beach at nothing and reaches full by the ramp's end", () => {
+    expect(laneStrength(1)).toBe(0);
+    expect(laneStrength(RAMP_LANES)).toBe(1);
+  });
+
+  it("never falls back once it has climbed", () => {
+    let previous = -1;
+    for (let row = 0; row <= BEACH_LANES; row += 1) {
+      const strength = laneStrength(row);
+      expect(strength).toBeGreaterThanOrEqual(previous);
+      previous = strength;
+    }
+  });
+
+  it("leaves the beach past the ramp entirely alone", () => {
+    for (let row = RAMP_LANES; row <= BEACH_LANES; row += 1) {
+      expect(laneStrength(row)).toBe(1);
+    }
+  });
+});
+
+describe("the opening ramp", () => {
+  it("only ever lowers a lane's ceilings, never raises them", () => {
+    // The ramp's fairness guarantee is structural rather than statistical: it
+    // interpolates ceilings downward, so a lane inside the ramp is drawn from a
+    // strict subset of what the same row could otherwise have produced. No seed
+    // can make an early lane harder than a late one of the same kind.
+    for (let day = 0; day < 400; day += 1) {
+      for (let row = 1; row < RAMP_LANES; row += 1) {
+        const lane = laneAt(seedForDay(day), row);
+        if (lane.kind === "safe" || lane.kind === "sea") continue;
+
+        const strength = laneStrength(row);
+        const widths = lane.kind === "drift" ? DRIFT_WIDTH : STILL_WIDTH;
+        const ceiling = widths.min + (widths.max - widths.min) * strength;
+        for (const hazard of lane.hazards) {
+          expect(hazard.halfWidth * 2).toBeLessThanOrEqual(ceiling + 1e-9);
+        }
+
+        if (lane.kind === "drift") {
+          const fastest =
+            DRIFT_SPEED.min + (DRIFT_SPEED.max - DRIFT_SPEED.min) * strength;
+          expect(lane.speed).toBeLessThanOrEqual(fastest + 1e-9);
+          expect(lane.hazards.length).toBeLessThanOrEqual(DRIFT_COUNT.max);
+        }
+      }
+    }
+  });
+
+  it("never opens the beach with a lane at full strength", () => {
+    // The complaint this exists for: the second lane of the run was drawn from
+    // the same distribution as the twenty-ninth, and a player meets the opening
+    // on every run and the far end perhaps once.
+    for (let day = 0; day < 400; day += 1) {
+      const lane = laneAt(seedForDay(day), 1);
+      if (lane.kind === "safe" || lane.kind === "sea") continue;
+      expect(lane.hazards.length).toBe(DRIFT_COUNT.min);
+      if (lane.kind === "drift") expect(lane.speed).toBe(DRIFT_SPEED.min);
+    }
+  });
+
+  it("still leaves every ramped lane crossable", () => {
+    for (let day = 0; day < 400; day += 1) {
+      for (let row = 1; row < RAMP_LANES; row += 1) {
+        const lane = laneAt(seedForDay(day), row);
+        if (lane.kind === "safe" || lane.kind === "sea") continue;
         for (const gap of gapsOf(lane)) {
           expect(gap).toBeGreaterThanOrEqual(minGapOf(lane) - 1e-9);
         }

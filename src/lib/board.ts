@@ -7,6 +7,7 @@ import {
   DRIFT_WIDTH,
   DT,
   MIN_GAP,
+  RAMP_LANES,
   SAFE_LANE_INTERVAL,
   STILL_COUNT,
   STILL_LANE_CHANCE,
@@ -91,6 +92,7 @@ export function laneAt(seed: number, row: number): Lane {
   if (row % SAFE_LANE_INTERVAL === 0) return { kind: "safe" };
 
   const rng = deriveRng(seed, row);
+  const strength = laneStrength(row);
 
   if (rng() < STILL_LANE_CHANCE) {
     return {
@@ -101,7 +103,7 @@ export function laneAt(seed: number, row: number): Lane {
         minGap: MIN_GAP.still,
         count: rangeInt(rng, STILL_COUNT.min, STILL_COUNT.max),
         minWidth: STILL_WIDTH.min,
-        maxWidth: STILL_WIDTH.max,
+        maxWidth: lerp(STILL_WIDTH.min, STILL_WIDTH.max, strength),
       }),
     };
   }
@@ -109,16 +111,49 @@ export function laneAt(seed: number, row: number): Lane {
   return {
     kind: "drift",
     direction: rng() < 0.5 ? -1 : 1,
-    speed: rangeFloat(rng, DRIFT_SPEED.min, DRIFT_SPEED.max),
+    speed: rangeFloat(
+      rng,
+      DRIFT_SPEED.min,
+      lerp(DRIFT_SPEED.min, DRIFT_SPEED.max, strength),
+    ),
     hazards: placeHazards(rng, {
       span: CYCLE_SPAN,
       cyclic: true,
       minGap: MIN_GAP.drift,
-      count: rangeInt(rng, DRIFT_COUNT.min, DRIFT_COUNT.max),
+      count: rangeInt(
+        rng,
+        DRIFT_COUNT.min,
+        Math.round(lerp(DRIFT_COUNT.min, DRIFT_COUNT.max, strength)),
+      ),
       minWidth: DRIFT_WIDTH.min,
-      maxWidth: DRIFT_WIDTH.max,
+      maxWidth: lerp(DRIFT_WIDTH.min, DRIFT_WIDTH.max, strength),
     }),
   };
+}
+
+/**
+ * How much of its full difficulty a lane at the given row is allowed, from zero
+ * at the first lane to one from {@link RAMP_LANES} onward.
+ *
+ * It raises ceilings and never floors, so a ramped lane is drawn from a strict
+ * subset of the lanes the same row could otherwise have produced. An early lane
+ * is therefore never harder than an unramped one would have been, whatever the
+ * seed does — the guarantee comes from the shape of the interpolation rather
+ * than from checking the numbers afterwards.
+ *
+ * Fewer hazards is the lever that matters most. {@link placeHazards} hands out
+ * every gap its minimum and then shares the surplus among however many gaps
+ * there are, so dropping a lane from three hazards to two does not merely
+ * remove an obstacle: it widens every remaining gap considerably.
+ */
+export function laneStrength(row: number): number {
+  if (RAMP_LANES <= 1) return 1;
+  const progress = (row - 1) / (RAMP_LANES - 1);
+  return progress < 0 ? 0 : progress > 1 ? 1 : progress;
+}
+
+function lerp(from: number, to: number, t: number): number {
+  return from + (to - from) * t;
 }
 
 /**

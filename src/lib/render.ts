@@ -146,9 +146,10 @@ export function drawFrame(
  * deliberately not the ellipse the shape wants to be. An inscribed ellipse
  * leaves the corners of the box empty, so a crab that visibly cleared a hazard
  * dies to a corner the player could not see — the same complaint the swept
- * collision exists to prevent, arriving by a different route. Only the legs,
- * claws and eyestalks reach outside the box, and they are thin enough to read
- * as appendages rather than as mass.
+ * collision exists to prevent, arriving by a different route. The claws sit
+ * inside that width for the mirror-image reason. Only the legs and eyestalks
+ * reach past the box, they do so vertically where there is no gap to misjudge,
+ * and they are strokes rather than mass.
  *
  * Mid-step it lightens, squashes and tucks its legs in: the player has given up
  * control for the next few tenths of a second and the shape should say so,
@@ -194,20 +195,6 @@ function drawCrab(
     }
   }
 
-  // Claws, held out to either side and bobbing against the gait.
-  ctx.fillStyle = limb;
-  for (const side of [-1, 1]) {
-    const bob = Math.sin(phase + (side > 0 ? Math.PI : 0)) * swing * 0.4;
-    roundedRect(
-      ctx,
-      side * halfWidth - (side > 0 ? 0 : 2.6 * scale),
-      -halfHeight * 0.5 + bob,
-      2.6 * scale,
-      2.2 * scale,
-      1 * scale,
-    );
-  }
-
   ctx.fillStyle = shell;
   roundedRect(
     ctx,
@@ -228,6 +215,27 @@ function drawCrab(
     halfHeight * 0.66,
     Math.min(4, 2 * scale),
   );
+
+  // Claws, drawn over the shell at its outer edges rather than reaching past
+  // them. Held outboard they were solid mass sitting outside the collision box,
+  // which made the crab read some forty per cent wider than the width it
+  // actually dies at — so every gap looked tighter than it was and the player
+  // hunted for room the lane already had. Art wider than the box is the milder
+  // half of the same fault as art narrower than it: one kills you from daylight
+  // you could see, the other hides room you were entitled to.
+  const clawWidth = 2.6 * scale;
+  ctx.fillStyle = limb;
+  for (const side of [-1, 1]) {
+    const bob = Math.sin(phase + (side > 0 ? Math.PI : 0)) * swing * 0.4;
+    roundedRect(
+      ctx,
+      side > 0 ? halfWidth - clawWidth : -halfWidth,
+      -halfHeight * 0.5 + bob,
+      clawWidth,
+      2.2 * scale,
+      1 * scale,
+    );
+  }
 
   // Eyestalks, rising just clear of the shell.
   ctx.strokeStyle = limb;
