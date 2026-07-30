@@ -198,6 +198,16 @@ left and the other moves right.
   wrong order lets a crab be pushed through something solid. The order has to be
   decided once, written down, and tested with a fast wave and a tight gap.
 
+  **Settled on 2026-07-30, and not by picking an order.** The wave is resolved
+  after the player's own move, so a forward press on the tick a set breaks is an
+  escape rather than a contested intent. The ride then grants immunity for its
+  whole duration and `SURF_GRACE_TICKS` past its end — so nothing solid can act
+  on a carried crab, and *which resolved first is not a thing the player can
+  observe*. That is a stronger answer than an ordering rule, because an ordering
+  rule has to stay correct as hazards are added and this does not. The grace
+  also stops a crab set down in still-washing surf from being picked straight
+  back up, so a set costs one lane rather than an unbroken ride to the sand.
+
 - **Time-driven escalation punishes hesitation, which is the point and also the
   risk.** If the tide advances too quickly the game stops being about reading
   lanes and starts being about rushing them, which is the opposite of what the
@@ -243,5 +253,6 @@ before committing to the rest.
 | 1 | How long is the beach? | It has to be long enough that reaching the sea feels earned and short enough that one life does not make the whole thing miserable. Purely a tuning question, and it cannot be answered without playing it. | **Provisionally thirty-two lanes**, 2026-07-29, chosen to be played against rather than reasoned about. Expect to move it. It is one constant and moving it is free until a real result is attached to a day. |
 | 2 | Do shells convert into time? | A single number is more comparable; two numbers are more legible and need no invented exchange rate. | **Decided: counted separately**, 2026-07-29. The result reads as a time and a shell count. The exchange rate between a shell and a second would be invention, would be re-tuned forever, and would collapse two legible axes into a number nobody can decompose. |
 | 3 | Does the tide advance with time or with progress? | Decided in favour of time above, because it gives the clock stakes and punishes camping. | **Decided: time-driven**, 2026-07-29. Standing still costs something concrete, and the clock has stakes beyond the scoreboard. Determinism is unaffected — the tide is a function of the tick count. |
-| 4 | Is the one-run-a-day limit enforced once there is something to beat? | The parent spec's Open Question #2 gets sharper here: a run you can lose in four seconds to a lane you misread is a harsher thing to ration than a distance score. | **Decided: not until the tide exists**, 2026-07-29. Enforcing it now makes every tuning pass a twenty-four hour feedback loop on a game whose difficulty curve is not built. It ships with the tide. |
+| 4 | Is the one-run-a-day limit enforced once there is something to beat? | The parent spec's Open Question #2 gets sharper here: a run you can lose in four seconds to a lane you misread is a harsher thing to ration than a distance score. | **Deferred again**, 2026-07-30. It was to ship with the tide; the tide now exists and it ships without it. The reason the original deferral gave has not gone away, it has moved: enforcing the limit makes every tuning pass a twenty-four hour feedback loop, and the tide is the *most* provisional thing in the game rather than the least. It ships when the tuning settles, not when the tide does. |
+| 5 | Which clock does the tide advance on? | `tick` counts from page load; `elapsed` counts from the player's first input, which is where the timer starts so the day's beach can be read before it is committed to. | **Decided: `elapsed`**, 2026-07-30. A tide on `tick` quietly charges a player a slice of the escalation for looking at the beach, which is the exact thing starting the timer on first input exists to prevent. Hazards and waves stay on `tick` so their rhythms can be read while the player decides — the beach is alive whether or not anyone is playing, and the tide is the run's own pressure. |
 | 5 | What does the shared summary look like for a loss? | A win has a time worth posting. A loss has a distance, and posting it is less appealing, which may matter for whether anyone shares at all. | **Decided: both outcomes share**, 2026-07-29. A loss reads as the day and the lane reached. With one life most runs are losses, and a share action that only appears on a win is one most players never see and cannot learn to expect. |

@@ -1,4 +1,11 @@
-import { type Best, emptyBest, isBest, type Run, withRun } from "@/lib/records";
+import {
+  type Best,
+  emptyBest,
+  isBest,
+  normalizeBest,
+  type Run,
+  withRun,
+} from "@/lib/records";
 
 /**
  * The personal best, and the only code that touches storage.
@@ -19,7 +26,15 @@ import { type Best, emptyBest, isBest, type Run, withRun } from "@/lib/records";
  * player their record and never their game.
  */
 
-/** Versioned, so a future change of shape cannot be read as this one. */
+/**
+ * Versioned, so a future change of shape cannot be read as this one.
+ *
+ * Still `v1` after shells and the streak were added, on purpose. Those fields
+ * are additive, and `normalizeBest` reads an older record forward into them —
+ * so bumping the key would throw away personal bests that are still perfectly
+ * valid in order to avoid writing a function that had to exist anyway. It gets
+ * bumped when a shape changes incompatibly, not when it grows.
+ */
 const KEY = "scuttle.best.v1";
 
 /**
@@ -38,7 +53,7 @@ function read(): Best {
     const raw = window.localStorage.getItem(KEY);
     if (raw === null) return NONE;
     const parsed: unknown = JSON.parse(raw);
-    return isBest(parsed) ? parsed : NONE;
+    return isBest(parsed) ? normalizeBest(parsed) : NONE;
   } catch {
     return NONE;
   }

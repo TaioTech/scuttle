@@ -90,7 +90,24 @@ frame of it.
   and the fastest lane speed — changing either means rederiving it.
 - **Never accumulate a hazard position.** `hazardCenterAt` is a closed form of
   the tick for exactly this reason: incremental addition drifts, and two devices
-  that started identically end up on different beaches an hour in.
+  that started identically end up on different beaches an hour in. The tide and
+  the wave cycle follow the same rule.
+- **There are two clocks and they are not interchangeable.** `tick` counts from
+  page load; `elapsed` counts from the player's first input. Hazards and waves
+  move on `tick`, so their rhythms can be read before the player commits. The
+  tide advances on `elapsed`, because a tide on `tick` charges a player a slice
+  of the escalation for looking at the beach — which is the exact thing the
+  timer starting on first input exists to prevent. `Beach` takes `elapsed`.
+- **A wave carries and therefore cannot kill, and that has to mean the whole
+  episode.** A carried crab is immune for the ride and `SURF_GRACE_TICKS` past
+  it. Without that the wave does not kill the player, it arranges for the beach
+  to, and the player dies to a move they never made. It also settles the
+  wave-versus-hazard ordering question by making the order unobservable, which
+  keeps being true as hazards are added — an ordering rule would not.
+- **A lane's emptiness is asked, not enumerated.** Use `hasHazards(lane)`
+  rather than listing the kinds that have none. The beach grew from three kinds
+  to six in one change, and every site that had spelled out `"safe" || "sea"`
+  was a site that silently started treating the surf as solid ground.
 - **Nothing may sample an unseeded source or read a clock inside `lib/`.**
 - **Art may not be narrower than the box it kills from.** A hazard is lethal
   across its whole collision box. Drawing it as separate figures shows daylight

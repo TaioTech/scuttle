@@ -278,6 +278,17 @@ problem that may not arrive.
   attached to only one of them — this is a structural change to how `drawFrame`
   walks the board, not just a new draw function, and it is worth settling
   before either hazard's art is started rather than discovering it mid-way.
+
+  **Settled on 2026-07-30: two passes, and a second kind of hazard.** The board
+  is drawn in one pass exactly as before — floors, rules, shells and the
+  hazards that belong to a row. Anything not lane-bound is a *roamer*, carries
+  its own position in continuous board coordinates rather than a row index, and
+  is drawn in a second pass after every lane and before the crab. Roamers are
+  therefore never clipped to a row's slice and never inherit a lane's identity,
+  which is what lets a frisbee be honestly half in one lane and half in the
+  next. The two passes also give the draw order the game needs for free: a
+  thing in the air is drawn over the sand it is about to land on, and the crab
+  is drawn over everything, so the player never loses track of themselves.
 - **The seagull's shadow is the one place art and fairness are the same
   question.** A shadow that looks better by growing subtly is a worse warning,
   the same trade `driftMass` already lost once to a "prettier and wrong"
@@ -303,3 +314,4 @@ problem that may not arrive.
 | 3 | Does the seagull itself need art before it lands, or does the shadow alone carry the whole telegraph? | The parent spec names the shadow specifically; it does not say whether the bird is seen arriving. | Pending |
 | 4 | Should the umbrella and towel share a draw function, or diverge once the umbrella's planting behaviour is known? | They look likely to share a shape today, but the planting animation may pull them apart enough that a shared function fights both callers. | Pending — revisit once the umbrella's mechanic exists |
 | 5 | Is procedural art the permanent direction, or the first phase of a migration to authored pixel art? | `scuttle.md` puts this out of scope until the game is known to be fun. Procedural has now been proven out twice (crab, walkers) and costs no artist. | Deferred, per `scuttle.md`. Not reopened by this spec. |
+| 6 | Does the pursuing hazard ship at all? | `scuttle.md` AC #3 asks for "a hazard that pursues the player rather than following a fixed lane path". Built once and pulled on 2026-07-30. | **Deferred**, 2026-07-30. It is the only hazard that needs persistent state in `SimState` — the frisbee and the seagull are closed forms of the run's clock and cost the simulation nothing. It also raised a fairness question the others do not: a pursuer sharing a row with walkers is double jeopardy that `placeHazards` cannot account for, since the crossability guarantee only knows what is *in* a lane. Snapping it to a safe lane answers that and is a real design (the breather stops being free), so this is a scope call rather than a dead end. AC #3 is unmet until it lands. |

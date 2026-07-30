@@ -7,18 +7,35 @@ import {
   LATERAL_SPEED,
   PLAYER_HALF_H,
   PLAYER_HALF_W,
+  SHELL_HALF_W,
   STEP_BUFFER_TICKS,
   STEP_TICKS,
+  SURF_GRACE_TICKS,
   TICK_HZ,
 } from "./constants";
 import {
   type Beach,
   type DriftLane,
+  hasHazards,
   hazardCenterAt,
   hazardStepPerTick,
+  isPlanted,
+  type Lane,
+  shellOf,
   type StillLane,
+  surfWashingAt,
 } from "./board";
 import { sweptOverlap, type Box } from "./collision";
+import {
+  type Frisbee,
+  frisbeeAt,
+  frisbeeBox,
+  frisbeeLocksOn,
+  seagullAt,
+  seagullBox,
+  seagullLocksOn,
+  type Seagull,
+} from "./roamers";
 
 /** What the three buttons are doing on the tick about to be simulated. */
 export type Input = {
@@ -87,7 +104,61 @@ export type SimState = {
    * disagree about. Seconds are a display concern.
    */
   elapsed: number;
+  /**
+   * Ticks of wave immunity left. Nothing can kill the crab while this is set.
+   *
+   * A wave carries rather than kills, and this is what makes that true of the
+   * whole episode rather than only of the water itself. It covers the ride and
+   * a beat past its end, so a crab set down beside a walker has time to react
+   * instead of dying to a move it never made.
+   */
+  immune: number;
+  /**
+   * Which rows' shells have been picked up, one bit per row.
+   *
+   * A bitmask rather than a set or a list because the state is copied on every
+   * one of sixty ticks a second and compared wholesale in the tests: a number
+   * copies for nothing and cannot be accidentally shared between two states the
+   * way a mutable collection can. Shells only ever lie in the dry sand, which
+   * is well inside the bits a small integer has to offer.
+   *
+   * It has to be remembered per row rather than merely counted, because a wave
+   * can carry the crab back over ground it has already taken and a shell must
+   * not be worth two.
+   */
+  shells: number;
+  /**
+   * Where the seagull is currently aimed, fixed at the moment it locked on.
+   *
+   * Stored rather than derived because it depends on where the crab happened
+   * to be standing on one particular tick, which is exactly the kind of fact a
+   * closed form cannot reconstruct. Locking once is what makes the threat
+   * avoidable — a shadow that kept following would be a warning about
+   * something there is no getting out of the way of.
+   */
+  seagullX: number;
+  seagullRow: number;
+  /** The row a frisbee was aimed at, fixed when it was let go. */
+  frisbeeRow: number;
 };
+
+/** How many shells have been picked up. */
+export function shellsTaken(state: SimState): number {
+  let count = 0;
+  for (let bits = state.shells; bits !== 0; bits >>>= 1) count += bits & 1;
+  return count;
+}
+
+/**
+ * Whether a wave is carrying the crab right now.
+ *
+ * Derived from the step running backwards rather than stored, because a step
+ * toward the shore is the only thing that ever produces one and a second copy
+ * of that fact is a second thing to keep true.
+ */
+export function isCarried(state: SimState): boolean {
+  return state.step !== null && state.step.to < state.step.from;
+}
 
 /** A run at its first tick, before anything has moved. */
 export function createSim(): SimState {
@@ -103,6 +174,22 @@ export function createSim(): SimState {
     won: false,
     started: false,
     elapsed: 0,
+    immune: 0,
+    shells: 0,
+    seagullX: BOARD_WIDTH / 2,
+    seagullRow: 0,
+    frisbeeRow: 0,
+  };
+}
+
+/** The roamers as they stand, for the collision pass and the renderer. */
+export function roamersOf(
+  state: SimState,
+  seed: number,
+): { frisbee: Frisbee | null; seagull: Seagull | null } {
+  return {
+    frisbee: frisbeeAt(seed, state.elapsed, state.frisbeeRow),
+    seagull: seagullAt(state.elapsed, state.seagullX, state.seagullRow),
   };
 }
 
@@ -131,8 +218,28 @@ export function stepSim(
   state: SimState,
   input: Input,
   beach: Beach,
+  /**
+   * The day's seed, for the roamers that are not part of any lane.
+   *
+   * Passed rather than reached for, and defaulted so every test that only
+   * cares about movement or lanes keeps working — a beach with no seed simply
+   * has no frisbee on it, which is the same fixture those tests already used.
+   */
+  seed = 0,
 ): SimState {
   if (!state.alive || state.won) return state;
+
+  // The clock starts on the first thing the player does and runs until the sea.
+  const started = state.started || input.left || input.right || input.forward;
+  const elapsed = started ? state.elapsed + 1 : state.elapsed;
+
+  // Every question this tick asks of the board is asked of the same board: the
+  // one belonging to the tick being produced. The tide moves band boundaries
+  // between ticks, and a tick that resolved its movement against one beach and
+  // its collisions against another would have a seam in it exactly where the
+  // water arrives.
+  const tick = state.tick + 1;
+  const at = (row: number): Lane => beach(row, elapsed);
 
   const fromX = state.x;
   const fromY = playerY(state);
@@ -141,18 +248,21 @@ export function stepSim(
   let row = state.row;
   let step = state.step;
   let buffer = Math.max(0, state.buffer - 1);
+  let immune = Math.max(0, state.immune - 1);
 
   const pressed = input.forward && !state.forwardWasDown;
 
   if (step) {
     if (pressed) buffer = STEP_BUFFER_TICKS;
 
-    const elapsed = step.elapsed + 1;
-    if (elapsed >= STEP_TICKS) {
+    // Named for the step rather than for the run: `elapsed` above is the run's
+    // clock and the two mean entirely different things.
+    const stepElapsed = step.elapsed + 1;
+    if (stepElapsed >= STEP_TICKS) {
       row = step.to;
       step = null;
     } else {
-      step = { ...step, elapsed };
+      step = { ...step, elapsed: stepElapsed };
     }
   } else {
     const direction = (input.right ? 1 : 0) - (input.left ? 1 : 0);
@@ -170,30 +280,92 @@ export function stepSim(
     }
   }
 
-  // The clock starts on the first thing the player does and runs until the sea.
-  const started =
-    state.started || input.left || input.right || input.forward;
+  // A wave takes a crab that is standing in washing surf and sets it down one
+  // lane toward shore. It is checked after the player's own move, so a forward
+  // press on the tick a wave breaks is an escape rather than a collision of
+  // intents — the crab that committed to leaving is allowed to have left.
+  //
+  // The ride grants immunity for its whole duration and a beat past its end,
+  // and that is what settles the ordering question rather than a rule about
+  // which resolves first: nothing solid can act on a carried crab, so whether
+  // the wave or the hazard moved first is not a thing the player can observe.
+  // The grace also stops a crab set down in still-washing surf from being
+  // picked straight back up, so a set costs a lane and not an unbroken ride.
+  if (!step && immune === 0 && at(row).kind === "surf" && surfWashingAt(row, tick)) {
+    step = { from: row, to: Math.max(0, row - 1), elapsed: 1 };
+    immune = STEP_TICKS + SURF_GRACE_TICKS;
+    buffer = 0;
+  }
+
+  // The seagull picks its patch of sand on one tick and then that patch is
+  // fixed. Locked to where the crab is *now*, after this tick's movement, so
+  // the warning is about somewhere the player actually is.
+  const locking = seagullLocksOn(elapsed);
+  const seagullX = locking ? x : state.seagullX;
+  const seagullRow = locking ? row : state.seagullRow;
+  const frisbeeRow = frisbeeLocksOn(elapsed) ? row : state.frisbeeRow;
 
   const next: SimState = {
     ...state,
-    tick: state.tick + 1,
+    tick,
+    seagullX,
+    seagullRow,
+    frisbeeRow,
     x,
     row,
     step,
     buffer,
+    immune,
     forwardWasDown: input.forward,
     furthest: Math.max(state.furthest, row),
-    // Asked of the beach rather than compared against a row number. When the
-    // tide arrives it moves where the water is, and a shoreline the simulation
-    // has hard-coded is one the tide cannot move.
-    won: beach(row).kind === "sea",
+    // Asked of the beach rather than compared against a row number. The tide
+    // moves where the water is, and a shoreline the simulation has hard-coded
+    // is one the tide cannot move.
+    won: at(row).kind === "sea",
     started,
-    elapsed: started ? state.elapsed + 1 : state.elapsed,
+    elapsed,
   };
 
-  next.alive = !struck(next, beach, fromX, fromY);
+  next.alive =
+    immune > 0 ||
+    !(
+      struck(next, at, fromX, fromY) ||
+      caughtByRoamer(next, seed, fromX, fromY)
+    );
+  next.shells = gathered(next, at, fromY);
 
   return next;
+}
+
+/**
+ * The shell mask after whatever the crab passed over this tick.
+ *
+ * Swept across the same rows a collision is, so a shell can be taken in
+ * passing during a step rather than only by standing on it. Being generous
+ * here is the right way round to be wrong: a pickup that was missed is a
+ * frustration, and a pickup that was not earned costs nothing but a point on
+ * an optional axis.
+ */
+function gathered(
+  state: SimState,
+  at: (row: number) => Lane,
+  fromY: number,
+): number {
+  const toY = playerY(state);
+  const lowest = Math.floor((Math.min(fromY, toY) - PLAYER_HALF_H) / LANE_HEIGHT);
+  const highest = Math.floor((Math.max(fromY, toY) + PLAYER_HALF_H) / LANE_HEIGHT);
+
+  let shells = state.shells;
+  for (let row = Math.max(0, lowest); row <= highest; row += 1) {
+    const bit = 1 << row;
+    if ((shells & bit) !== 0) continue;
+    const shell = shellOf(at(row));
+    if (shell === null) continue;
+    if (Math.abs(state.x - shell) <= PLAYER_HALF_W + SHELL_HALF_W) {
+      shells |= bit;
+    }
+  }
+  return shells;
 }
 
 /**
@@ -222,7 +394,7 @@ export function laneY(row: number): number {
  */
 function struck(
   state: SimState,
-  beach: Beach,
+  at: (row: number) => Lane,
   fromX: number,
   fromY: number,
 ): boolean {
@@ -244,9 +416,11 @@ function struck(
   };
 
   for (let row = Math.max(0, lowest); row <= highest; row += 1) {
-    const lane = beach(row);
-    if (lane.kind === "safe" || lane.kind === "sea") continue;
-    if (laneStruck(lane, row, state.tick, crabStart, crabEnd)) return true;
+    const lane = at(row);
+    if (!hasHazards(lane)) continue;
+    if (laneStruck(lane, row, state.tick, state.elapsed, crabStart, crabEnd)) {
+      return true;
+    }
   }
 
   return false;
@@ -256,6 +430,7 @@ function laneStruck(
   lane: StillLane | DriftLane,
   row: number,
   tick: number,
+  elapsed: number,
   crabStart: Box,
   crabEnd: Box,
 ): boolean {
@@ -263,6 +438,11 @@ function laneStruck(
   const y = laneY(row);
 
   for (const hazard of lane.hazards) {
+    // An umbrella occupies its place in the layout from the start and only
+    // becomes lethal when it plants. Skipping it here rather than leaving it
+    // out of the lane is what keeps the lane itself pure in the seed and the
+    // row, and what keeps the gap arithmetic ignorant that any of this happens.
+    if (!isPlanted(hazard, elapsed)) continue;
     // The hazard's position at the end of the tick is authoritative, and its
     // start is that position rewound by one tick's drift in a straight line.
     // Reading the start from the previous tick's wrapped position instead would
@@ -297,4 +477,53 @@ function laneStruck(
 
 function clamp(value: number, min: number, max: number): number {
   return value < min ? min : value > max ? max : value;
+}
+
+/**
+ * Whether any of the roamers caught the crab this tick.
+ *
+ * Swept like everything else — the frisbee is the fastest thing on the beach
+ * and testing where it ended up would let it pass clean through a crab, which
+ * is the exact complaint `collision.ts` exists to prevent.
+ *
+ * The seagull is only lethal once it is actually down. Its warning is a shadow
+ * and a shadow does not kill you; the whole point of the lead time is that the
+ * patch is harmless for every tick the player can still see it and react.
+ */
+function caughtByRoamer(
+  state: SimState,
+  seed: number,
+  fromX: number,
+  fromY: number,
+): boolean {
+  const toY = playerY(state);
+  const crabStart: Box = {
+    x: fromX,
+    y: fromY,
+    halfWidth: PLAYER_HALF_W,
+    halfHeight: PLAYER_HALF_H,
+  };
+  const crabEnd: Box = {
+    x: state.x,
+    y: toY,
+    halfWidth: PLAYER_HALF_W,
+    halfHeight: PLAYER_HALF_H,
+  };
+
+  const previousElapsed = Math.max(0, state.elapsed - 1);
+
+  const frisbee = frisbeeAt(seed, state.elapsed, state.frisbeeRow);
+  if (frisbee !== null) {
+    const before = frisbeeAt(seed, previousElapsed, state.frisbeeRow);
+    const start = before === null ? frisbeeBox(frisbee) : frisbeeBox(before);
+    if (sweptOverlap(crabStart, crabEnd, start, frisbeeBox(frisbee))) return true;
+  }
+
+  const seagull = seagullAt(state.elapsed, state.seagullX, state.seagullRow);
+  if (seagull !== null && seagull.striking) {
+    const box = seagullBox(seagull);
+    if (sweptOverlap(crabStart, crabEnd, box, box)) return true;
+  }
+
+  return false;
 }

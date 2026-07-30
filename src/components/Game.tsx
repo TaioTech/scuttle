@@ -7,7 +7,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { beachFor } from "@/lib/board";
+import { beachFor, shellCount } from "@/lib/board";
 import { BEACH_LANES, STEP_HAPTIC_MS, TICK_MS } from "@/lib/constants";
 import {
   bestSnapshot,
@@ -18,15 +18,24 @@ import {
 import { drainTicks } from "@/lib/loop";
 import { dayNumber, seedForDay } from "@/lib/rng";
 import { drawFrame, fitView, type View } from "@/lib/render";
-import { createSim, formatElapsed, type Input, stepSim } from "@/lib/sim";
+import {
+  createSim,
+  formatElapsed,
+  type Input,
+  roamersOf,
+  shellsTaken,
+  stepSim,
+} from "@/lib/sim";
+import { liveStreak, type Run, shareSummary } from "@/lib/records";
 import Controls, { type Control } from "./Controls";
 
-/** How a run ended, the number worth showing for it, and whether it was a best. */
-type Result = {
-  won: boolean;
-  lanes: number;
-  elapsed: number;
+/** How a run ended, the numbers worth showing for it, and whether it was a best. */
+type Result = Run & {
   improved: boolean;
+  /** How many shells the day's beach was holding, so the count has a total. */
+  totalShells: number;
+  /** The streak as it stands after this run. */
+  streak: number;
 };
 
 /**
@@ -56,10 +65,16 @@ export default function Game() {
   const day = useToday();
   const [run, setRun] = useState(0);
   const [result, setResult] = useState<Result | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  // Derived rather than stored: the day's shell count is a pure function of the
+  // day, and a second copy of it is a second thing that can be wrong.
+  const totalShells = day === null ? 0 : shellCount(seedForDay(day));
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const distanceRef = useRef<HTMLSpanElement>(null);
   const clockRef = useRef<HTMLSpanElement>(null);
+  const shellRef = useRef<HTMLSpanElement>(null);
 
   const best = useSyncExternalStore(
     subscribeBest,
@@ -109,7 +124,8 @@ export default function Game() {
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
 
-    const beach = beachFor(seedForDay(day));
+    const seed = seedForDay(day);
+    const beach = beachFor(seed);
     let previous = createSim();
     let current = previous;
     let pending = 0;
@@ -128,6 +144,7 @@ export default function Game() {
         current,
         current.alive ? pending / TICK_MS : 1,
         size,
+        roamersOf(current, seed),
       );
     };
 
@@ -162,7 +179,7 @@ export default function Game() {
         };
         tapped.current = false;
         previous = current;
-        current = stepSim(current, input, beach);
+        current = stepSim(current, input, beach, seed);
         // The instant the step begins, not when the button was pressed: the
         // press might have been buffered, and what the player is being told is
         // that control has just left them.
@@ -182,18 +199,29 @@ export default function Game() {
       if (clockRef.current) {
         clockRef.current.textContent = formatElapsed(current.elapsed);
       }
+      if (shellRef.current) {
+        shellRef.current.textContent = String(shellsTaken(current));
+      }
 
       paint();
 
       if (current.alive && !current.won) {
         frame = requestAnimationFrame(loop);
       } else {
-        const run = {
+        const finished: Run = {
           won: current.won,
           lanes: Math.min(current.furthest, BEACH_LANES),
           elapsed: current.elapsed,
+          shells: shellsTaken(current),
+          day,
         };
-        setResult({ ...run, improved: recordRun(run) });
+        const improved = recordRun(finished);
+        setResult({
+          ...finished,
+          improved,
+          totalShells: shellCount(seedForDay(day)),
+          streak: liveStreak(bestSnapshot(), day),
+        });
       }
     };
 
@@ -222,8 +250,33 @@ export default function Game() {
   const restart = () => {
     held.current = { left: false, right: false, forward: false };
     tapped.current = false;
+    setCopied(false);
     setResult(null);
     setRun((id) => id + 1);
+  };
+
+  /**
+   * Copies the day's summary, falling back to the share sheet on a phone.
+   *
+   * The clipboard is tried first because it works the same everywhere and asks
+   * nothing of the player. `navigator.share` is nicer on a phone but it is
+   * gated on a user gesture, absent on desktop, and rejects when the sheet is
+   * dismissed — which is not a failure worth telling anybody about.
+   */
+  const share = async () => {
+    if (result === null) return;
+    const text = shareSummary(result, result.totalShells, result.streak);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+    } catch {
+      try {
+        await navigator.share?.({ text });
+      } catch {
+        // A dismissed share sheet and a refused clipboard look identical from
+        // here, and neither is worth interrupting the player over.
+      }
+    }
   };
 
   return (
@@ -239,7 +292,14 @@ export default function Game() {
           0.0s
         </span>
         <span className="font-mono">
-          {day === null ? "beach —" : `beach #${day}`}
+          {/* Shown only once the day is known, because the total comes from the
+              day's seed and "0/—" is worse than waiting a frame for it. */}
+          {totalShells > 0 && (
+            <span className="text-shell">
+              <span ref={shellRef}>0</span>/{totalShells}{" "}
+            </span>
+          )}
+          {day === null ? "beach —" : `#${day}`}
         </span>
       </header>
 
@@ -247,7 +307,7 @@ export default function Game() {
         <canvas ref={canvasRef} className="block h-full w-full touch-none" />
 
         {result !== null && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-background/85 px-6 text-center">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-background/85 px-6 text-center">
             <p className="text-sm text-muted">
               {result.won ? "Reached the sea" : "Caught on the sand"}
             </p>
@@ -261,6 +321,12 @@ export default function Game() {
                   ? "lane crossed"
                   : "lanes crossed"}
             </p>
+
+            {result.totalShells > 0 && (
+              <p className="font-mono text-sm text-shell">
+                {result.shells}/{result.totalShells} shells
+              </p>
+            )}
 
             {/* A first run has nothing to be measured against, and "best 0
                 lanes" is a fact nobody needed. */}
@@ -276,13 +342,31 @@ export default function Game() {
                     `best ${best.lanes} ${best.lanes === 1 ? "lane" : "lanes"}`}
               </p>
             )}
-            <button
-              type="button"
-              onClick={restart}
-              className="mt-2 rounded border border-line px-5 py-2 text-sm text-foreground transition-colors hover:border-accent hover:text-accent"
-            >
-              Again
-            </button>
+
+            {/* A streak of one is just today, and saying so out loud makes the
+                number look like something being lost rather than started. */}
+            {result.streak > 1 && (
+              <p className="font-mono text-xs tracking-wide text-muted">
+                {result.streak}-day streak
+              </p>
+            )}
+
+            <div className="mt-2 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={restart}
+                className="rounded border border-line px-5 py-2 text-sm text-foreground transition-colors hover:border-accent hover:text-accent"
+              >
+                Again
+              </button>
+              <button
+                type="button"
+                onClick={share}
+                className="rounded border border-line px-5 py-2 text-sm text-foreground transition-colors hover:border-accent hover:text-accent"
+              >
+                {copied ? "Copied" : "Share"}
+              </button>
+            </div>
           </div>
         )}
       </div>
