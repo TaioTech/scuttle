@@ -16,6 +16,8 @@
   --line: #27272a;
   --accent: #f97316;
   --sand: #17130f;
+  /* Mirrors PALETTE.shell, so a shell count reads as the thing it counts. */
+  --shell: #fbcfe8;
 }
 
 @theme inline {
@@ -25,6 +27,7 @@
   --color-line: var(--line);
   --color-accent: var(--accent);
   --color-sand: var(--sand);
+  --color-shell: var(--shell);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

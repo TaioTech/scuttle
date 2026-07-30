@@ -122,6 +122,23 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   orange, so a glance can never confuse the two. Collected shells are a bitmask
   per row rather than a running total, because a wave can carry the crab back
   over ground it has already taken and a shell must not be worth two.
+- A result that handles both outcomes and a share that works for either. A win
+  copies a time, a loss copies the lane it ended on, and neither says anything
+  about what was in the lanes — a summary that leaked the beach would make
+  sharing it an unkindness. A loss shares because with one life most runs are
+  losses, and a share action that only appears on a win is one most players
+  never see and never learn to expect. The clipboard is tried first and the
+  phone's share sheet is the fallback, and a dismissed sheet is not an error
+  worth reporting.
+- A streak, kept beside the personal best: consecutive days the sea was
+  reached. Stored with the day it was last true, because a streak is not a
+  number — a count with no date cannot be told from a stale one, and a run of
+  three that ended a month ago would go on claiming to be three. It does not
+  grow twice in one day, since retries are unlimited and a streak that could be
+  farmed in an afternoon would mean nothing. A loss does not break it, for the
+  same reason: a player who dies at lane four and wins on the next go has still
+  reached the sea today.
+- A live shell count in the header, next to the day.
 - `hasHazards`, asked instead of enumerating the lane kinds that have none. The
   beach went from three kinds to six in one change and every site that had
   spelled out the empty ones was a site that would have silently begun treating

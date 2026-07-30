@@ -192,7 +192,13 @@ export function drawFrame(
 }
 
 /**
- * A scallop shell, drawn about its centre: a fan with ridges and a hinge.
+ * A conch, drawn about its centre: a spired body, a flared lip, a pointed tail.
+ *
+ * A scallop fan was tried first. It is the easier shape and it is the wrong
+ * one — a symmetrical fan at this size reads as an arch or a sunrise, and the
+ * beach already has enough small pale rectangles for a fourth silhouette to
+ * need a profile that could not be anything else. A conch leans, which is what
+ * makes it read as an object lying on sand rather than as a mark on it.
  *
  * It breathes a little, and the phase comes from the tick and the row so that
  * two shells on the same beach are not pulsing in unison. Like every other
@@ -210,25 +216,51 @@ function drawShell(
   tick: number,
   row: number,
 ): void {
-  const breath = 1 + Math.sin(tick / 40 + row * 1.9) * 0.06;
-  const radius = SHELL_HALF_W * scale * breath;
+  const breath = 1 + Math.sin(tick / 40 + row * 1.9) * 0.05;
+  const size = SHELL_HALF_W * scale * breath;
 
+  ctx.save();
+  ctx.rotate(-0.35);
+
+  // The body whorl: a fat teardrop, widest low and drawn to a point at the top.
   ctx.fillStyle = PALETTE.shell;
   ctx.beginPath();
-  ctx.moveTo(0, radius * 0.75);
-  ctx.arc(0, radius * 0.75, radius, Math.PI, 0);
-  ctx.closePath();
+  ctx.moveTo(0, -size * 1.15);
+  ctx.bezierCurveTo(size * 0.85, -size * 0.5, size * 0.8, size * 0.5, 0, size);
+  ctx.bezierCurveTo(-size * 0.8, size * 0.5, -size * 0.85, -size * 0.5, 0, -size * 1.15);
   ctx.fill();
 
+  // The flared lip down one side, which is the half of the outline that says
+  // conch rather than pebble.
+  ctx.beginPath();
+  ctx.moveTo(size * 0.12, -size * 0.45);
+  ctx.bezierCurveTo(
+    size * 1.15,
+    -size * 0.15,
+    size * 1.05,
+    size * 0.62,
+    size * 0.05,
+    size * 0.95,
+  );
+  ctx.bezierCurveTo(size * 0.6, size * 0.35, size * 0.62, -size * 0.1, size * 0.12, -size * 0.45);
+  ctx.fill();
+
+  // Spire ridges, tightening toward the tail the way a real whorl does.
   ctx.strokeStyle = PALETTE.shellRidge;
-  ctx.lineWidth = Math.max(1, 0.32 * scale);
+  ctx.lineWidth = Math.max(1, 0.26 * scale);
   ctx.lineCap = "round";
-  for (const spread of [-0.62, 0, 0.62]) {
+  for (const [at, spread] of [
+    [-0.72, 0.34],
+    [-0.3, 0.5],
+    [0.16, 0.44],
+  ] as const) {
     ctx.beginPath();
-    ctx.moveTo(0, radius * 0.7);
-    ctx.lineTo(spread * radius * 1.05, radius * 0.75 - radius * 0.82);
+    ctx.moveTo(-size * spread, size * at);
+    ctx.quadraticCurveTo(0, size * (at - 0.22), size * spread * 0.7, size * at);
     ctx.stroke();
   }
+
+  ctx.restore();
 }
 
 /** The colour of a lane's floor, before anything standing on it is drawn. */
