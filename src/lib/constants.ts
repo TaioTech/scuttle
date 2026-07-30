@@ -218,3 +218,15 @@ export const WALKER_GAIT_TICKS = 34;
 
 /** Board units of towel per stripe. */
 export const TOWEL_STRIPE_SPACING = 7;
+
+/**
+ * Milliseconds of vibration when a forward step commits.
+ *
+ * The game is about a decision that cannot be taken back, and on a phone a
+ * physical thump says so more directly than the colour change does. Short
+ * enough to read as a tap rather than a buzz — anything longer stops feeling
+ * like the moment of commitment and starts feeling like a notification.
+ *
+ * Not supported by Safari on iOS, where this does nothing at all.
+ */
+export const STEP_HAPTIC_MS = 18;

@@ -48,6 +48,21 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   reached the sea, a distance for one that ended on the sand.
 - Thirty-two lanes is a first guess and is meant to be moved. It is the run's
   length, and a run's length cannot be reasoned about, only played.
+- A short vibration the instant a forward step commits. The game is about a
+  decision that cannot be taken back, and on a phone a physical thump says so
+  more directly than the colour change does. Fired when the step begins rather
+  than when the button was pressed, because the press may have been buffered
+  and what the player is being told is that control has just left them. Safari
+  on iOS does not implement the Vibration API, so on an iPhone this is nothing
+  happening.
+- A personal best kept on the device: fewest ticks to the sea, and the furthest
+  lane ever reached. Comparable across days only because the beach is a fixed
+  length. The rules for what counts as a record are pure and tested; the
+  storage is an external store read through `useSyncExternalStore`, like the
+  calendar date and for the same reason — the page is prerendered and the
+  record does not exist on the server. A record that is missing, corrupt, or
+  written by an older build is discarded rather than trusted, and a browser
+  that refuses storage costs the player their record and never their game.
 - `CLAUDE.md`, importing `AGENTS.md` rather than restating it. Claude Code does
   not read `AGENTS.md` on its own, so without this none of the architecture
   rules or gotchas reached the agent working in the repo.

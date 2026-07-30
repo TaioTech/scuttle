@@ -8,15 +8,41 @@ import {
   useSyncExternalStore,
 } from "react";
 import { beachFor } from "@/lib/board";
-import { BEACH_LANES, TICK_MS } from "@/lib/constants";
+import { BEACH_LANES, STEP_HAPTIC_MS, TICK_MS } from "@/lib/constants";
+import {
+  bestSnapshot,
+  recordRun,
+  serverBestSnapshot,
+  subscribeBest,
+} from "./bestStore";
 import { drainTicks } from "@/lib/loop";
 import { dayNumber, seedForDay } from "@/lib/rng";
 import { drawFrame, fitView, type View } from "@/lib/render";
 import { createSim, formatElapsed, type Input, stepSim } from "@/lib/sim";
 import Controls, { type Control } from "./Controls";
 
-/** How a run ended, and the number worth showing for that ending. */
-type Result = { won: boolean; lanes: number; elapsed: number };
+/** How a run ended, the number worth showing for it, and whether it was a best. */
+type Result = {
+  won: boolean;
+  lanes: number;
+  elapsed: number;
+  improved: boolean;
+};
+
+/**
+ * A short buzz at the moment a step commits.
+ *
+ * Feature-detected rather than assumed: Safari on iOS does not implement the
+ * Vibration API at all, so on an iPhone this is simply nothing happening. It is
+ * wrapped because a browser that has the method can still refuse the call.
+ */
+function thump(): void {
+  try {
+    navigator.vibrate?.(STEP_HAPTIC_MS);
+  } catch {
+    // A device that will not buzz is not a reason to drop a frame.
+  }
+}
 
 /**
  * The whole game: a canvas, three buttons, and the loop between them.
@@ -34,6 +60,12 @@ export default function Game() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const distanceRef = useRef<HTMLSpanElement>(null);
   const clockRef = useRef<HTMLSpanElement>(null);
+
+  const best = useSyncExternalStore(
+    subscribeBest,
+    bestSnapshot,
+    serverBestSnapshot,
+  );
   const held = useRef({ left: false, right: false, forward: false });
   // A tap can begin and end inside one frame on a slow device. Latching it
   // guarantees the press survives to be seen by at least one tick.
@@ -131,6 +163,10 @@ export default function Game() {
         tapped.current = false;
         previous = current;
         current = stepSim(current, input, beach);
+        // The instant the step begins, not when the button was pressed: the
+        // press might have been buffered, and what the player is being told is
+        // that control has just left them.
+        if (previous.step === null && current.step !== null) thump();
       }
 
       // Written straight to the DOM rather than through state: these change on
@@ -152,11 +188,12 @@ export default function Game() {
       if (current.alive && !current.won) {
         frame = requestAnimationFrame(loop);
       } else {
-        setResult({
+        const run = {
           won: current.won,
           lanes: Math.min(current.furthest, BEACH_LANES),
           elapsed: current.elapsed,
-        });
+        };
+        setResult({ ...run, improved: recordRun(run) });
       }
     };
 
@@ -224,6 +261,21 @@ export default function Game() {
                   ? "lane crossed"
                   : "lanes crossed"}
             </p>
+
+            {/* A first run has nothing to be measured against, and "best 0
+                lanes" is a fact nobody needed. */}
+            {result.improved ? (
+              <p className="font-mono text-xs tracking-wide text-accent">
+                new best
+              </p>
+            ) : (
+              <p className="font-mono text-xs tracking-wide text-muted">
+                {result.won
+                  ? best.ticks !== null && `best ${formatElapsed(best.ticks)}`
+                  : best.lanes > 0 &&
+                    `best ${best.lanes} ${best.lanes === 1 ? "lane" : "lanes"}`}
+              </p>
+            )}
             <button
               type="button"
               onClick={restart}
