@@ -9,14 +9,18 @@ import {
   PLAYER_HALF_W,
   STEP_BUFFER_TICKS,
   STEP_TICKS,
+  SURF_GRACE_TICKS,
   TICK_HZ,
 } from "./constants";
 import {
   type Beach,
   type DriftLane,
+  hasHazards,
   hazardCenterAt,
   hazardStepPerTick,
+  type Lane,
   type StillLane,
+  surfWashingAt,
 } from "./board";
 import { sweptOverlap, type Box } from "./collision";
 
@@ -87,7 +91,27 @@ export type SimState = {
    * disagree about. Seconds are a display concern.
    */
   elapsed: number;
+  /**
+   * Ticks of wave immunity left. Nothing can kill the crab while this is set.
+   *
+   * A wave carries rather than kills, and this is what makes that true of the
+   * whole episode rather than only of the water itself. It covers the ride and
+   * a beat past its end, so a crab set down beside a walker has time to react
+   * instead of dying to a move it never made.
+   */
+  immune: number;
 };
+
+/**
+ * Whether a wave is carrying the crab right now.
+ *
+ * Derived from the step running backwards rather than stored, because a step
+ * toward the shore is the only thing that ever produces one and a second copy
+ * of that fact is a second thing to keep true.
+ */
+export function isCarried(state: SimState): boolean {
+  return state.step !== null && state.step.to < state.step.from;
+}
 
 /** A run at its first tick, before anything has moved. */
 export function createSim(): SimState {
@@ -103,6 +127,7 @@ export function createSim(): SimState {
     won: false,
     started: false,
     elapsed: 0,
+    immune: 0,
   };
 }
 
@@ -134,6 +159,18 @@ export function stepSim(
 ): SimState {
   if (!state.alive || state.won) return state;
 
+  // The clock starts on the first thing the player does and runs until the sea.
+  const started = state.started || input.left || input.right || input.forward;
+  const elapsed = started ? state.elapsed + 1 : state.elapsed;
+
+  // Every question this tick asks of the board is asked of the same board: the
+  // one belonging to the tick being produced. The tide moves band boundaries
+  // between ticks, and a tick that resolved its movement against one beach and
+  // its collisions against another would have a seam in it exactly where the
+  // water arrives.
+  const tick = state.tick + 1;
+  const at = (row: number): Lane => beach(row, elapsed);
+
   const fromX = state.x;
   const fromY = playerY(state);
 
@@ -141,6 +178,7 @@ export function stepSim(
   let row = state.row;
   let step = state.step;
   let buffer = Math.max(0, state.buffer - 1);
+  let immune = Math.max(0, state.immune - 1);
 
   const pressed = input.forward && !state.forwardWasDown;
 
@@ -170,28 +208,42 @@ export function stepSim(
     }
   }
 
-  // The clock starts on the first thing the player does and runs until the sea.
-  const started =
-    state.started || input.left || input.right || input.forward;
+  // A wave takes a crab that is standing in washing surf and sets it down one
+  // lane toward shore. It is checked after the player's own move, so a forward
+  // press on the tick a wave breaks is an escape rather than a collision of
+  // intents — the crab that committed to leaving is allowed to have left.
+  //
+  // The ride grants immunity for its whole duration and a beat past its end,
+  // and that is what settles the ordering question rather than a rule about
+  // which resolves first: nothing solid can act on a carried crab, so whether
+  // the wave or the hazard moved first is not a thing the player can observe.
+  // The grace also stops a crab set down in still-washing surf from being
+  // picked straight back up, so a set costs a lane and not an unbroken ride.
+  if (!step && immune === 0 && at(row).kind === "surf" && surfWashingAt(row, tick)) {
+    step = { from: row, to: Math.max(0, row - 1), elapsed: 1 };
+    immune = STEP_TICKS + SURF_GRACE_TICKS;
+    buffer = 0;
+  }
 
   const next: SimState = {
     ...state,
-    tick: state.tick + 1,
+    tick,
     x,
     row,
     step,
     buffer,
+    immune,
     forwardWasDown: input.forward,
     furthest: Math.max(state.furthest, row),
-    // Asked of the beach rather than compared against a row number. When the
-    // tide arrives it moves where the water is, and a shoreline the simulation
-    // has hard-coded is one the tide cannot move.
-    won: beach(row).kind === "sea",
+    // Asked of the beach rather than compared against a row number. The tide
+    // moves where the water is, and a shoreline the simulation has hard-coded
+    // is one the tide cannot move.
+    won: at(row).kind === "sea",
     started,
-    elapsed: started ? state.elapsed + 1 : state.elapsed,
+    elapsed,
   };
 
-  next.alive = !struck(next, beach, fromX, fromY);
+  next.alive = immune > 0 || !struck(next, at, fromX, fromY);
 
   return next;
 }
@@ -222,7 +274,7 @@ export function laneY(row: number): number {
  */
 function struck(
   state: SimState,
-  beach: Beach,
+  at: (row: number) => Lane,
   fromX: number,
   fromY: number,
 ): boolean {
@@ -244,8 +296,8 @@ function struck(
   };
 
   for (let row = Math.max(0, lowest); row <= highest; row += 1) {
-    const lane = beach(row);
-    if (lane.kind === "safe" || lane.kind === "sea") continue;
+    const lane = at(row);
+    if (!hasHazards(lane)) continue;
     if (laneStruck(lane, row, state.tick, crabStart, crabEnd)) return true;
   }
 

@@ -5,6 +5,7 @@ import {
   DRIFT_COUNT,
   DRIFT_SPEED,
   DRIFT_WIDTH,
+  DRY_LANES,
   DT,
   MIN_GAP,
   RAMP_LANES,
@@ -12,6 +13,11 @@ import {
   STILL_COUNT,
   STILL_LANE_CHANCE,
   STILL_WIDTH,
+  SURF_BREAK_TICKS,
+  SURF_LANES,
+  SURF_PERIOD_TICKS,
+  SURF_ROW_LAG,
+  TIDE_FULL_TICKS,
   WRAP_MARGIN,
 } from "./constants";
 import { deriveRng, rangeFloat, rangeInt } from "./rng";
@@ -34,6 +40,26 @@ export type SafeLane = { kind: "safe" };
 /** The water at the end of the beach. Reaching it is winning. */
 export type SeaLane = { kind: "sea" };
 
+/**
+ * Wet sand between the dry beach and the surf. Safe to stand on, and shrinking.
+ *
+ * Its own variant rather than a `safe` lane so the renderer can draw it as the
+ * thing the tide is taking, and so the compiler will not let a later change
+ * treat "somewhere to rest" and "somewhere the water has not reached yet" as
+ * the same fact.
+ */
+export type TideLine = { kind: "tideline" };
+
+/**
+ * Water that carries rather than kills.
+ *
+ * A surf lane washes on a cycle. While it washes it moves a crab standing in it
+ * one lane back toward shore; between sets it is simply somewhere to stand.
+ * Nothing in the surf is ever lethal, so it never appears in a collision test —
+ * the danger is where the wave leaves you, not the wave.
+ */
+export type SurfLane = { kind: "surf" };
+
 /** Towels and sunbathers: dry sand that simply is not available. */
 export type StillLane = { kind: "still"; hazards: Hazard[] };
 
@@ -53,42 +79,102 @@ export type DriftLane = {
  * line and the surf can be added later as new variants that the compiler
  * forces every caller to handle.
  */
-export type Lane = SafeLane | SeaLane | StillLane | DriftLane;
+export type Lane = SafeLane | SeaLane | TideLine | SurfLane | StillLane | DriftLane;
 
 /**
- * A whole beach, addressed by row.
+ * A whole beach, addressed by row and by how long the run has been going.
  *
  * The simulation takes one of these rather than a seed, so the thing that
  * decides what is in a lane stays outside the thing that decides what happens
  * when the crab touches it. That is what lets the movement rules be tested on
- * an empty beach, and it is where the tide will attach when it arrives: a tide
- * shifts which row is which, which is a different beach and not a different
- * simulation.
+ * an empty beach.
+ *
+ * The second argument is here because of the tide, and it means exactly what
+ * the board comment always promised it would: a tide shifts which row is which,
+ * which is a different beach and not a different simulation. A beach that
+ * ignores it is still a beach — most of the test fixtures are — because a
+ * tideless board is simply one the water never reaches.
+ *
+ * It is `elapsed` and not `tick` on purpose. See {@link tideAt}.
  */
-export type Beach = (row: number) => Lane;
+export type Beach = (row: number, elapsed: number) => Lane;
 
 /** The beach for one day's seed. */
 export function beachFor(seed: number): Beach {
-  return (row) => laneAt(seed, row);
+  return (row, elapsed) => laneAt(seed, row, elapsed);
 }
 
 /**
- * The lane at a given row of the day's beach.
+ * How far in the tide is, from nothing at the run's first tick to fully in.
  *
- * Pure in the seed and the row: the same pair always gives the same lane, on
- * any device, in any order, however many times it is asked. Nothing is cached
- * because nothing needs to be — a lane is a few dozen arithmetic operations,
- * and a cache is a place for two devices to disagree.
+ * Measured in `elapsed` — ticks since the player's first input — rather than in
+ * `tick`, which counts from the moment the page loaded. The run's clock waits
+ * for the player so they can read the day's beach before committing to it, and
+ * a tide that did not wait with it would quietly charge them a quarter of the
+ * escalation for looking. Standing still is meant to cost something, but only
+ * once standing still is a choice inside a run rather than a decision not to
+ * have started one.
+ *
+ * Hazards and waves keep moving on `tick` while the player reads, because a
+ * board frozen until first input is one whose rhythms cannot be read at all.
+ * The beach is alive whether or not anybody is playing; the tide is the run's
+ * own pressure and belongs to the run.
+ *
+ * A function of that count and nothing else, which is what keeps two devices on
+ * the same beach: they need only have simulated the same number of ticks, not
+ * to have measured the same amount of time.
+ */
+export function tideAt(elapsed: number): number {
+  const progress = elapsed / TIDE_FULL_TICKS;
+  return progress < 0 ? 0 : progress > 1 ? 1 : progress;
+}
+
+/**
+ * The first row that is surf, given how long the run has been going.
+ *
+ * Descends as the tide comes in, so the water reaches further up the beach and
+ * the wet sand behind it narrows. Floored at the last row of dry sand: the tide
+ * takes the tide line and stops.
+ */
+export function waterlineAt(elapsed: number): number {
+  const lanes =
+    SURF_LANES.low + (SURF_LANES.high - SURF_LANES.low) * tideAt(elapsed);
+  return BEACH_LANES - Math.floor(lanes) + 1;
+}
+
+/**
+ * Whether a surf lane is washing at the given tick.
+ *
+ * Lanes nearer the sea break first, so a set reads as a wave running shoreward
+ * rather than as the whole band flickering together. Like every other position
+ * in this file it is a closed form of the tick, never a counter that advances.
+ */
+export function surfWashingAt(row: number, tick: number): boolean {
+  const offset = row * SURF_ROW_LAG;
+  return wrap(tick + offset, SURF_PERIOD_TICKS) < SURF_BREAK_TICKS;
+}
+
+/**
+ * The lane at a given row of the day's beach, at a given point in a run.
+ *
+ * Pure in the seed, the row and the elapsed count: the same three always give
+ * the same lane, on any device, in any order, however many times it is asked.
+ * Nothing is cached because nothing needs to be — a lane is a few dozen
+ * arithmetic operations, and a cache is a place for two devices to disagree.
  *
  * Row zero is the crab's starting row and is always safe, and everything past
- * {@link BEACH_LANES} is the sea.
+ * {@link BEACH_LANES} is the sea. Only the band boundaries move with the tide;
+ * what is actually in a dry-sand lane stays pure in the seed and the row, so
+ * the tide can never change a hazard the crab has already committed to.
  */
-export function laneAt(seed: number, row: number): Lane {
+export function laneAt(seed: number, row: number, elapsed = 0): Lane {
   // Row zero and everything behind it is the promenade the crab starts on.
   if (row <= 0) return { kind: "safe" };
   // The beach ends. Every row past it is water, so a crab that overshoots the
   // shoreline is still in the sea rather than off the end of the world.
   if (row > BEACH_LANES) return { kind: "sea" };
+  if (row >= waterlineAt(elapsed)) return { kind: "surf" };
+  if (row > DRY_LANES) return { kind: "tideline" };
   if (row % SAFE_LANE_INTERVAL === 0) return { kind: "safe" };
 
   const rng = deriveRng(seed, row);
@@ -189,7 +275,7 @@ export function hazardStepPerTick(lane: Lane): number {
  * than asserted — see the board tests.
  */
 export function gapsOf(lane: Lane): number[] {
-  if (lane.kind === "safe" || lane.kind === "sea") return [];
+  if (!hasHazards(lane)) return [];
 
   const cyclic = lane.kind === "drift";
   const span = cyclic ? CYCLE_SPAN : BOARD_WIDTH;
@@ -215,10 +301,20 @@ export function gapsOf(lane: Lane): number[] {
 
 /** The narrowest gap the given lane was built to leave. */
 export function minGapOf(lane: Lane): number {
-  if (lane.kind === "safe" || lane.kind === "sea") {
-    return Number.POSITIVE_INFINITY;
-  }
+  if (!hasHazards(lane)) return Number.POSITIVE_INFINITY;
   return lane.kind === "drift" ? MIN_GAP.drift : MIN_GAP.still;
+}
+
+/**
+ * Whether a lane has anything solid in it.
+ *
+ * Asked rather than listing the empty kinds at every call site, so adding a
+ * band to the beach is one change here instead of a hunt for the places that
+ * happened to enumerate them. The surf is deliberately on the empty side: it
+ * acts on the crab, but nothing in it is ever lethal.
+ */
+export function hasHazards(lane: Lane): lane is StillLane | DriftLane {
+  return lane.kind === "still" || lane.kind === "drift";
 }
 
 type Placement = {

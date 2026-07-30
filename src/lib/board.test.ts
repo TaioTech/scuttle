@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
   gapsOf,
+  hasHazards,
   hazardCenterAt,
   hazardStepPerTick,
   laneAt,
   laneStrength,
   type Lane,
   minGapOf,
+  surfWashingAt,
+  tideAt,
+  waterlineAt,
 } from "./board";
 import {
   BEACH_LANES,
@@ -15,6 +19,7 @@ import {
   DRIFT_COUNT,
   DRIFT_SPEED,
   DRIFT_WIDTH,
+  DRY_LANES,
   DT,
   MIN_GAP,
   PLAYER_HALF_W,
@@ -22,6 +27,11 @@ import {
   SAFE_LANE_INTERVAL,
   SEA_ROW,
   STILL_WIDTH,
+  SURF_BREAK_TICKS,
+  SURF_LANES,
+  SURF_PERIOD_TICKS,
+  SURF_ROW_LAG,
+  TIDE_FULL_TICKS,
   WRAP_MARGIN,
 } from "./constants";
 import { seedForDay } from "./rng";
@@ -33,8 +43,15 @@ const SEED = seedForDay(42);
  * these assertions sweep. The sea past it is not part of the beach and is
  * checked on its own.
  */
-function beach(seed = SEED): Lane[] {
-  return Array.from({ length: BEACH_LANES + 1 }, (_, row) => laneAt(seed, row));
+function beach(seed = SEED, tick = 0): Lane[] {
+  return Array.from({ length: BEACH_LANES + 1 }, (_, row) =>
+    laneAt(seed, row, tick),
+  );
+}
+
+/** Just the dry sand, which is the only band the seed has any say over. */
+function drySand(seed = SEED): Lane[] {
+  return Array.from({ length: DRY_LANES }, (_, i) => laneAt(seed, i + 1));
 }
 
 describe("laneAt", () => {
@@ -54,15 +71,36 @@ describe("laneAt", () => {
     expect(laneAt(SEED, 0).kind).toBe("safe");
   });
 
-  it("keeps the safe lanes on their rhythm", () => {
-    beach().forEach((lane, row) => {
+  it("keeps the safe lanes on their rhythm through the dry sand", () => {
+    drySand().forEach((lane, index) => {
+      const row = index + 1;
       expect(lane.kind === "safe").toBe(row % SAFE_LANE_INTERVAL === 0);
     });
+    expect(laneAt(SEED, 0).kind).toBe("safe");
   });
 
   it("produces both still and drifting hazard lanes", () => {
-    const kinds = new Set(beach().map((lane) => lane.kind));
+    const kinds = new Set(drySand().map((lane) => lane.kind));
     expect(kinds).toEqual(new Set(["safe", "still", "drift"]));
+  });
+
+  it("lays the beach out in bands, sand then wet sand then surf", () => {
+    const kinds = beach().map((lane) => lane.kind);
+    expect(kinds[DRY_LANES]).not.toBe("tideline");
+    expect(kinds[DRY_LANES + 1]).toBe("tideline");
+    expect(kinds[BEACH_LANES]).toBe("surf");
+
+    // Once a band has started it runs to the end of itself. A tide line with a
+    // patch of dry sand in the middle of it would be the bands losing their
+    // meaning, and the tide's escalation is only legible if a player can read
+    // the board as three regions rather than as thirty-two independent rows.
+    const order = ["tideline", "surf"];
+    let seen = -1;
+    for (let row = DRY_LANES + 1; row <= BEACH_LANES; row += 1) {
+      const index = order.indexOf(laneAt(SEED, row).kind);
+      expect(index).toBeGreaterThanOrEqual(seen);
+      seen = index;
+    }
   });
 
   it("ends the beach at the sea", () => {
@@ -78,10 +116,30 @@ describe("laneAt", () => {
     }
   });
 
-  it("puts a safe lane immediately before the sea", () => {
-    // The last thing between the player and the water should not be a hazard
-    // they have to gamble on with the whole run already behind them.
-    expect(laneAt(SEED, BEACH_LANES).kind).toBe("safe");
+  it("puts the surf immediately before the sea", () => {
+    // This used to insist on a safe lane there: the last thing between a player
+    // and the water should not be a hazard to gamble on with the whole run
+    // behind them. The surf is not that hazard. It cannot kill, so ending the
+    // beach with it costs a mistimed crossing a lane rather than the run, and
+    // the final push being against the water is the shape the spec asks for.
+    for (let day = 0; day < 50; day += 1) {
+      expect(laneAt(seedForDay(day), BEACH_LANES).kind).toBe("surf");
+    }
+  });
+
+  it("never lets the tide reach the dry sand", () => {
+    // The seed decides what is in the dry-sand lanes and the tide is not
+    // allowed a vote. Water arriving under a crab mid-step would delete a
+    // hazard it had already committed to crossing, which is the fixed-length
+    // beach's crossability guarantee being undone by the clock.
+    for (const tick of [0, 1_000, TIDE_FULL_TICKS, TIDE_FULL_TICKS * 4]) {
+      for (let row = 1; row <= DRY_LANES; row += 1) {
+        const lane = laneAt(SEED, row, tick);
+        expect(lane.kind).not.toBe("surf");
+        expect(lane.kind).not.toBe("tideline");
+        expect(lane).toEqual(laneAt(SEED, row, 0));
+      }
+    }
   });
 
   it("gives every day the same length of beach", () => {
@@ -121,7 +179,7 @@ describe("lane layout", () => {
 
   it("fills its lane exactly, leaving no hazard hanging off the end", () => {
     for (const lane of beach()) {
-      if (lane.kind === "safe" || lane.kind === "sea") continue;
+      if (!hasHazards(lane)) continue;
       const span = lane.kind === "drift" ? CYCLE_SPAN : BOARD_WIDTH;
       for (const hazard of lane.hazards) {
         expect(hazard.center - hazard.halfWidth).toBeGreaterThanOrEqual(-1e-9);
@@ -149,7 +207,7 @@ describe("lane layout", () => {
     // beaches, every lane of every one of them.
     for (let day = 0; day < 1_100; day += 1) {
       for (const lane of beach(seedForDay(day))) {
-        if (lane.kind === "safe" || lane.kind === "sea") continue;
+        if (!hasHazards(lane)) continue;
         expect(lane.hazards.length).toBeGreaterThan(0);
         for (const gap of gapsOf(lane)) {
           expect(gap).toBeGreaterThanOrEqual(minGapOf(lane) - 1e-9);
@@ -190,7 +248,7 @@ describe("the opening ramp", () => {
     for (let day = 0; day < 400; day += 1) {
       for (let row = 1; row < RAMP_LANES; row += 1) {
         const lane = laneAt(seedForDay(day), row);
-        if (lane.kind === "safe" || lane.kind === "sea") continue;
+        if (!hasHazards(lane)) continue;
 
         const strength = laneStrength(row);
         const widths = lane.kind === "drift" ? DRIFT_WIDTH : STILL_WIDTH;
@@ -215,7 +273,7 @@ describe("the opening ramp", () => {
     // on every run and the far end perhaps once.
     for (let day = 0; day < 400; day += 1) {
       const lane = laneAt(seedForDay(day), 1);
-      if (lane.kind === "safe" || lane.kind === "sea") continue;
+      if (!hasHazards(lane)) continue;
       expect(lane.hazards.length).toBe(DRIFT_COUNT.min);
       if (lane.kind === "drift") expect(lane.speed).toBe(DRIFT_SPEED.min);
     }
@@ -225,12 +283,105 @@ describe("the opening ramp", () => {
     for (let day = 0; day < 400; day += 1) {
       for (let row = 1; row < RAMP_LANES; row += 1) {
         const lane = laneAt(seedForDay(day), row);
-        if (lane.kind === "safe" || lane.kind === "sea") continue;
+        if (!hasHazards(lane)) continue;
         for (const gap of gapsOf(lane)) {
           expect(gap).toBeGreaterThanOrEqual(minGapOf(lane) - 1e-9);
         }
       }
     }
+  });
+});
+
+describe("the tide", () => {
+  it("starts out and comes fully in, and stays in", () => {
+    expect(tideAt(0)).toBe(0);
+    expect(tideAt(TIDE_FULL_TICKS)).toBe(1);
+    expect(tideAt(TIDE_FULL_TICKS * 10)).toBe(1);
+  });
+
+  it("only ever advances", () => {
+    let previous = -1;
+    for (let tick = 0; tick <= TIDE_FULL_TICKS * 2; tick += 137) {
+      expect(tideAt(tick)).toBeGreaterThanOrEqual(previous);
+      previous = tideAt(tick);
+    }
+  });
+
+  it("brings the water further up the beach as it advances", () => {
+    let previous = Number.POSITIVE_INFINITY;
+    for (let tick = 0; tick <= TIDE_FULL_TICKS; tick += 97) {
+      const waterline = waterlineAt(tick);
+      expect(waterline).toBeLessThanOrEqual(previous);
+      previous = waterline;
+    }
+  });
+
+  it("narrows the tide line to nothing without eating the dry sand", () => {
+    const low = waterlineAt(0);
+    const high = waterlineAt(TIDE_FULL_TICKS);
+    expect(BEACH_LANES - low + 1).toBe(SURF_LANES.low);
+    expect(BEACH_LANES - high + 1).toBe(SURF_LANES.high);
+    // At full tide the surf's leading edge sits exactly on the first row past
+    // the dry sand: every lane of wet sand taken, not one lane of sand.
+    expect(high).toBe(DRY_LANES + 1);
+    expect(waterlineAt(TIDE_FULL_TICKS * 5)).toBe(DRY_LANES + 1);
+  });
+
+  it("reads a clock nowhere", () => {
+    const now = Date.now;
+    const random = Math.random;
+    Date.now = () => {
+      throw new Error("the tide read a clock");
+    };
+    Math.random = () => {
+      throw new Error("the tide read an unseeded source");
+    };
+    try {
+      for (let tick = 0; tick < 5_000; tick += 1) {
+        expect(() => laneAt(SEED, BEACH_LANES - 4, tick)).not.toThrow();
+      }
+    } finally {
+      Date.now = now;
+      Math.random = random;
+    }
+  });
+});
+
+describe("surfWashingAt", () => {
+  it("washes for its break and rests for the remainder of the cycle", () => {
+    let washing = 0;
+    for (let tick = 0; tick < SURF_PERIOD_TICKS; tick += 1) {
+      if (surfWashingAt(0, tick)) washing += 1;
+    }
+    expect(washing).toBe(SURF_BREAK_TICKS);
+  });
+
+  it("repeats exactly, however long the run goes on", () => {
+    for (let tick = 0; tick < 400; tick += 1) {
+      expect(surfWashingAt(25, tick)).toBe(
+        surfWashingAt(25, tick + SURF_PERIOD_TICKS),
+      );
+      // A closed form of the tick, so a long run cannot drift out of true the
+      // way an accumulated phase would.
+      expect(surfWashingAt(25, tick)).toBe(
+        surfWashingAt(25, tick + SURF_PERIOD_TICKS * 1_000),
+      );
+    }
+  });
+
+  it("breaks nearer the sea first, so a set runs shoreward", () => {
+    // The lane one row up the beach repeats what its neighbour did a lag ago,
+    // which is what makes the band read as a wave rather than as a row of
+    // lights blinking together.
+    for (let tick = 0; tick < 300; tick += 1) {
+      expect(surfWashingAt(25, tick + SURF_ROW_LAG)).toBe(
+        surfWashingAt(26, tick),
+      );
+    }
+  });
+
+  it("leaves every surf lane crossable more often than not", () => {
+    expect(SURF_BREAK_TICKS).toBeLessThan(SURF_PERIOD_TICKS / 2);
   });
 });
 

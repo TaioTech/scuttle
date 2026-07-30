@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { type Beach, beachFor, laneAt } from "./board";
+import {
+  type Beach,
+  beachFor,
+  laneAt,
+  surfWashingAt,
+} from "./board";
 import {
   BOARD_WIDTH,
   DT,
@@ -7,9 +12,13 @@ import {
   LATERAL_SPEED,
   MAX_FRAME_MS,
   PLAYER_HALF_W,
+  BEACH_LANES,
   STEP_BUFFER_TICKS,
   STEP_TICKS,
+  SURF_GRACE_TICKS,
+  SURF_PERIOD_TICKS,
   TICK_MS,
+  TIDE_FULL_TICKS,
 } from "./constants";
 import { drainTicks } from "./loop";
 import { seedForDay } from "./rng";
@@ -446,5 +455,172 @@ describe("frame rate", () => {
 
     expect(stuttering).toEqual(smooth);
     expect(awful).toEqual(smooth);
+  });
+});
+
+describe("the surf", () => {
+  /** Every row is surf, so a wave is the only thing that can happen. */
+  const SURF: Beach = () => ({ kind: "surf" });
+
+  /**
+   * Surf everywhere except one lane of lethal sand where a wave will set the
+   * crab down. The whole point of the immunity is what happens on that lane.
+   */
+  const SURF_OVER_TEETH = (deadRow: number): Beach =>
+    (row) =>
+      row === deadRow
+        ? {
+            kind: "still",
+            hazards: [{ center: BOARD_WIDTH / 2, halfWidth: BOARD_WIDTH / 2 }],
+          }
+        : { kind: "surf" };
+
+  /** The first tick at or after `from` on which the given row is washing. */
+  function nextBreak(row: number, from = 0): number {
+    for (let tick = from; tick < from + SURF_PERIOD_TICKS * 2; tick += 1) {
+      if (surfWashingAt(row, tick)) return tick;
+    }
+    throw new Error("the surf never broke");
+  }
+
+  /** A crab standing on `row`, wound forward to just before a wave breaks. */
+  function waitingForAWave(row: number, beach: Beach = SURF): SimState {
+    const breaks = nextBreak(row, 2);
+    let state: SimState = { ...createSim(), row, tick: breaks - 1 };
+    state = stepSim(state, IDLE, beach);
+    return state;
+  }
+
+  it("carries a standing crab one lane toward shore", () => {
+    const state = waitingForAWave(20);
+    expect(state.step).toEqual({ from: 20, to: 19, elapsed: 1 });
+  });
+
+  it("does not end the run", () => {
+    const caught = waitingForAWave(20);
+    const landed = hold(caught, IDLE, STEP_TICKS, SURF);
+    expect(landed.alive).toBe(true);
+    expect(landed.won).toBe(false);
+    expect(landed.row).toBe(19);
+  });
+
+  it("cannot kill the crab it is carrying", () => {
+    // The rule that makes "carries rather than kills" mean anything. Without
+    // it the wave does not kill the player, it arranges for the beach to.
+    const beach = SURF_OVER_TEETH(19);
+    const caught = waitingForAWave(20, beach);
+    expect(caught.immune).toBeGreaterThan(0);
+
+    const landed = hold(caught, IDLE, STEP_TICKS, beach);
+    expect(landed.alive).toBe(true);
+    expect(landed.row).toBe(19);
+  });
+
+  it("keeps the crab alive for a beat after setting it down, and no longer", () => {
+    const beach = SURF_OVER_TEETH(19);
+    const caught = waitingForAWave(20, beach);
+
+    // Still standing on lethal sand a moment after landing.
+    const sheltered = hold(caught, IDLE, STEP_TICKS + SURF_GRACE_TICKS - 2, beach);
+    expect(sheltered.alive).toBe(true);
+    expect(sheltered.row).toBe(19);
+
+    // The grace runs out and the sand is what it always was.
+    const exposed = hold(sheltered, IDLE, 3, beach);
+    expect(exposed.alive).toBe(false);
+  });
+
+  it("lets a crab that committed to leaving get away", () => {
+    // Forward is resolved before the wave, so a press on the tick a set breaks
+    // is an escape rather than a collision of intents.
+    const breaks = nextBreak(20, 2);
+    const before: SimState = { ...createSim(), row: 20, tick: breaks - 1 };
+    const state = stepSim(before, FORWARD, SURF);
+    expect(state.step).toEqual({ from: 20, to: 21, elapsed: 1 });
+    expect(state.immune).toBe(0);
+  });
+
+  it("does not interrupt a step already under way", () => {
+    // The step is uninterruptible whatever is happening to the lane it left.
+    const breaks = nextBreak(20, 40);
+    let state: SimState = { ...createSim(), row: 20, tick: breaks - 8 };
+    state = stepSim(state, FORWARD, SURF);
+    const mid = hold(state, IDLE, 6, SURF);
+    expect(mid.step?.to).toBe(21);
+    expect(mid.immune).toBe(0);
+  });
+
+  it("costs a lane per set rather than an unbroken ride to the sand", () => {
+    // The grace beat also stops a crab set down in still-washing surf from
+    // being picked straight back up.
+    const caught = waitingForAWave(20);
+    const landed = hold(caught, IDLE, STEP_TICKS, SURF);
+    expect(landed.row).toBe(19);
+
+    const during = hold(landed, IDLE, SURF_GRACE_TICKS - 2, SURF);
+    expect(during.row).toBe(19);
+    expect(during.step).toBeNull();
+  });
+
+  it("never carries the crab off the back of the world", () => {
+    let state: SimState = { ...createSim(), row: 1 };
+    state = hold(state, IDLE, SURF_PERIOD_TICKS * 6, SURF);
+    expect(state.row).toBeGreaterThanOrEqual(0);
+    expect(state.alive).toBe(true);
+  });
+
+  it("is not something a crab can be killed by", () => {
+    const state = hold(createSim(), IDLE, SURF_PERIOD_TICKS * 4, SURF);
+    expect(state.alive).toBe(true);
+  });
+});
+
+describe("the tide", () => {
+  it("puts two devices on the same beach given the same inputs", () => {
+    // The tide advances with the tick, so a run is still reproducible tick for
+    // tick — what changes is that a player who dawdles meets a different board.
+    const scripted = (t: number): Input =>
+      t % 90 === 0 ? FORWARD : t % 7 < 4 ? RIGHT : LEFT;
+
+    const run = (): SimState => {
+      let state = createSim();
+      const beach = beachFor(SEED);
+      for (let t = 0; t < 4_000; t += 1) state = stepSim(state, scripted(t), beach);
+      return state;
+    };
+
+    expect(run()).toEqual(run());
+  });
+
+  it("does not come in while the player is still reading the beach", () => {
+    // The run's clock waits for the first input so the day's beach can be read
+    // before it is committed to. A tide that did not wait with it would charge
+    // the player a slice of the escalation for looking.
+    const beach = beachFor(SEED);
+    const idled = hold(createSim(), IDLE, TIDE_FULL_TICKS, beach);
+    expect(idled.elapsed).toBe(0);
+    expect(idled.tick).toBe(TIDE_FULL_TICKS);
+
+    for (let row = 1; row <= BEACH_LANES; row += 1) {
+      expect(beach(row, idled.elapsed)).toEqual(beach(row, 0));
+    }
+  });
+
+  it("starts coming in the moment the player does", () => {
+    const beach = beachFor(SEED);
+    const waited = hold(createSim(), IDLE, 2_000, beach);
+    const playing = hold(waited, RIGHT, TIDE_FULL_TICKS, beach);
+    expect(playing.elapsed).toBe(TIDE_FULL_TICKS);
+    expect(beach(BEACH_LANES - 5, playing.elapsed).kind).toBe("surf");
+  });
+
+  it("changes the board under a player who waits", () => {
+    // Standing still has to cost something concrete, or the clock only matters
+    // to the scoreboard and camping is free.
+    const beach = beachFor(SEED);
+    const early = beach(BEACH_LANES - 5, 0);
+    const late = beach(BEACH_LANES - 5, TIDE_FULL_TICKS);
+    expect(early.kind).not.toBe(late.kind);
+    expect(late.kind).toBe("surf");
   });
 });

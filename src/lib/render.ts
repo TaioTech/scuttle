@@ -1,4 +1,10 @@
-import { type Beach, hazardCenterAt } from "./board";
+import {
+  type Beach,
+  hasHazards,
+  hazardCenterAt,
+  type Lane,
+  surfWashingAt,
+} from "./board";
 import {
   BOARD_WIDTH,
   GAIT_FULL_SPEED,
@@ -16,7 +22,7 @@ import {
   WALKER_SPACING,
 } from "./constants";
 import { PALETTE } from "./palette";
-import { playerY, type SimState } from "./sim";
+import { isCarried, playerY, type SimState } from "./sim";
 
 /**
  * Where the board sits inside the canvas, in CSS pixels.
@@ -68,6 +74,10 @@ export function drawFrame(
   const crabX = lerp(previous.x, current.x, alpha);
   const crabY = lerp(playerY(previous), playerY(current), alpha);
   const tick = previous.tick + (current.tick - previous.tick) * alpha;
+  // The tide's clock, which waits for the player's first input while the tick
+  // does not. Interpolated the same way so the water's edge does not step.
+  const elapsed =
+    previous.elapsed + (current.elapsed - previous.elapsed) * alpha;
 
   // The crab sits a couple of lanes up from the bottom edge so there is beach
   // ahead of it to read, and the camera stops at the promenade rather than
@@ -87,31 +97,52 @@ export function drawFrame(
   ctx.clip();
 
   const firstRow = Math.floor(cameraRow);
+  const boardWidth = BOARD_WIDTH * view.scale;
   for (let row = firstRow; row <= firstRow + VISIBLE_LANES; row += 1) {
-    const lane = beach(row);
+    const lane = beach(row, elapsed);
     const top = toScreenY((row + 1) * LANE_HEIGHT);
     const laneHeight = LANE_HEIGHT * view.scale;
 
-    ctx.fillStyle =
-      lane.kind === "sea"
-        ? PALETTE.sea
-        : lane.kind === "safe"
-          ? PALETTE.safe
-          : PALETTE.sand[Math.abs(row) % 2];
-    ctx.fillRect(view.originX, top, BOARD_WIDTH * view.scale, laneHeight + 1);
+    ctx.fillStyle = laneFloor(lane, row);
+    ctx.fillRect(view.originX, top, boardWidth, laneHeight + 1);
+
+    // A washing surf lane is filled edge to edge for exactly the ticks it will
+    // carry a crab. The push zone and the thing the player can see are the same
+    // rectangle, computed from the same predicate — the surf gets no more
+    // licence to imply an extent it does not have than a hazard does.
+    if (lane.kind === "surf" && surfWashingAt(row, Math.floor(tick))) {
+      ctx.fillStyle = PALETTE.surfWash;
+      ctx.fillRect(view.originX, top, boardWidth, laneHeight + 1);
+      ctx.fillStyle = PALETTE.surfCrest;
+      ctx.fillRect(view.originX, top, boardWidth, Math.max(1, 1.4 * view.scale));
+    }
 
     // The shoreline gets foam rather than the usual lane rule, so the end of
     // the beach reads as somewhere to arrive instead of one more boundary.
-    const shoreline = lane.kind === "sea" && beach(row - 1).kind !== "sea";
-    ctx.fillStyle = shoreline ? PALETTE.seaFoam : PALETTE.line;
+    // Everything the water has reached gets a cool rule instead of the sand's
+    // warm one, which would be invisible against it.
+    //
+    // Marked on the last row *before* the sea rather than the first row of it.
+    // Every lane draws its own upper rule, so asking the sea to draw the
+    // shoreline put the foam at the sea's far edge — a whole lane past the line
+    // it was naming. Harmless while the last beach row was pale sand and wrong
+    // the moment the surf arrived, since the one thing the foam has to be
+    // unambiguous about is where winning starts.
+    const shoreline =
+      lane.kind !== "sea" && beach(row + 1, elapsed).kind === "sea";
+    ctx.fillStyle = shoreline
+      ? PALETTE.seaFoam
+      : lane.kind === "tideline" || lane.kind === "surf"
+        ? PALETTE.waterLine
+        : PALETTE.line;
     ctx.fillRect(
       view.originX,
       top,
-      BOARD_WIDTH * view.scale,
+      boardWidth,
       shoreline ? Math.max(1, 1.2 * view.scale) : 1,
     );
 
-    if (lane.kind === "safe" || lane.kind === "sea") continue;
+    if (!hasHazards(lane)) continue;
 
     const middle = toScreenY((row + 0.5) * LANE_HEIGHT);
     for (const hazard of lane.hazards) {
@@ -133,10 +164,33 @@ export function drawFrame(
 
   ctx.save();
   ctx.translate(toScreenX(crabX), toScreenY(crabY));
-  drawCrab(ctx, view.scale, current.step !== null, tick, speed);
+  drawCrab(
+    ctx,
+    view.scale,
+    current.step !== null,
+    isCarried(current) || current.immune > 0,
+    tick,
+    speed,
+  );
   ctx.restore();
 
   ctx.restore();
+}
+
+/** The colour of a lane's floor, before anything standing on it is drawn. */
+function laneFloor(lane: Lane, row: number): string {
+  switch (lane.kind) {
+    case "sea":
+      return PALETTE.sea;
+    case "surf":
+      return PALETTE.surf;
+    case "tideline":
+      return PALETTE.tideLine[Math.abs(row) % 2];
+    case "safe":
+      return PALETTE.safe;
+    default:
+      return PALETTE.sand[Math.abs(row) % 2];
+  }
 }
 
 /**
@@ -162,14 +216,32 @@ function drawCrab(
   ctx: CanvasRenderingContext2D,
   scale: number,
   stepping: boolean,
+  carried: boolean,
   tick: number,
   speed: number,
 ): void {
   const halfWidth = PLAYER_HALF_W * scale * (stepping ? 1.08 : 1);
   const halfHeight = PLAYER_HALF_H * scale * (stepping ? 0.86 : 1);
-  const shell = stepping ? PALETTE.crabStepping : PALETTE.crab;
-  const limb = stepping ? PALETTE.crabSteppingLimb : PALETTE.crabLimb;
-  const lit = stepping ? PALETTE.crabSteppingShell : PALETTE.crabShell;
+  // A crab in the water's hands is drawn cool rather than orange, and it wins
+  // over the mid-step colour because being unkillable is the more important of
+  // the two things true of it. The immunity outlasts the ride by design, so the
+  // colour holds through the grace beat as well: the player can see the moment
+  // it runs out instead of discovering it by dying.
+  const shell = carried
+    ? PALETTE.crabCarried
+    : stepping
+      ? PALETTE.crabStepping
+      : PALETTE.crab;
+  const limb = carried
+    ? PALETTE.crabCarriedLimb
+    : stepping
+      ? PALETTE.crabSteppingLimb
+      : PALETTE.crabLimb;
+  const lit = carried
+    ? PALETTE.crabCarriedShell
+    : stepping
+      ? PALETTE.crabSteppingShell
+      : PALETTE.crabShell;
 
   // A committed step tucks the legs; otherwise they swing further the faster
   // the crab is travelling, so a standing crab shuffles and a moving one runs.

@@ -166,6 +166,72 @@ export const BEACH_LANES = 32;
 /** The row the sea begins at. Reaching it wins the day. */
 export const SEA_ROW = BEACH_LANES + 1;
 
+/**
+ * How many lanes of surf there are at dead low tide and at full high tide.
+ *
+ * The tide's whole visible effect is this number growing. The surf's leading
+ * edge starts three lanes from the sea and advances to nine, and the wet sand
+ * of the tide line is whatever is left between the surf and the dry sand — six
+ * lanes of breather at the start of a run and none at all by the end of one.
+ *
+ * The maximum is a floor on the dry sand as much as a ceiling on the water. The
+ * tide is not allowed to dissolve a seeded dry-sand lane: those lanes are what
+ * the day's seed actually decides, and water arriving under a crab mid-step
+ * would delete a hazard it had already committed to crossing.
+ */
+export const SURF_LANES = { low: 3, high: 9 } as const;
+
+/** The last row of dry sand. The tide never reaches past it. */
+export const DRY_LANES = BEACH_LANES - SURF_LANES.high;
+
+/**
+ * Ticks for the tide to come fully in.
+ *
+ * Seventy-five seconds against a confident run of roughly twenty-five means a
+ * player who reads the beach well meets perhaps a third of the tide, and one
+ * who hesitates on every lane arrives at the water with no wet sand left to
+ * rest on. That is the escalation doing its job: the cost of caution is the
+ * board getting worse, not a number going up.
+ *
+ * The most provisional constant in the file. If the tide runs too fast the game
+ * stops being about reading lanes and starts being about rushing them, which is
+ * the opposite of what a committed forward step is for.
+ */
+export const TIDE_FULL_TICKS = 75 * TICK_HZ;
+
+/**
+ * Ticks in one full wave cycle, and how many of them a lane spends washing.
+ *
+ * Roughly a third of the cycle is water, so a surf lane is crossable more often
+ * than not and the problem is timing rather than patience.
+ */
+export const SURF_PERIOD_TICKS = 150;
+
+/** Ticks a surf lane spends washing, out of {@link SURF_PERIOD_TICKS}. */
+export const SURF_BREAK_TICKS = 48;
+
+/**
+ * Ticks of delay between one surf lane breaking and the next one down.
+ *
+ * Non-zero so a set reads as a wave rolling in rather than as the whole band
+ * blinking at once. Lanes nearer the sea break first, so the motion runs
+ * shoreward, which is the direction the water is actually going.
+ */
+export const SURF_ROW_LAG = 26;
+
+/**
+ * Ticks of immunity a crab keeps after a wave sets it down.
+ *
+ * A carried crab cannot be killed, and this is how long that protection
+ * outlasts the carrying. Without it the wave does not kill the player, it
+ * arranges for the beach to — which is a death they had no input into and the
+ * one thing "carries rather than kills" cannot be allowed to mean.
+ *
+ * It also stops a crab landing in washing surf from being picked straight back
+ * up, so a set costs a lane rather than an unbroken ride to the tide line.
+ */
+export const SURF_GRACE_TICKS = 30;
+
 /** Narrowest and widest a drifting hazard can be. */
 export const DRIFT_WIDTH = { min: 16, max: 34 } as const;
 

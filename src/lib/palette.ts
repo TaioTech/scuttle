@@ -30,10 +30,67 @@ export const PALETTE = {
    * the run is legible from as far up the beach as it can be seen. A player who
    * cannot tell how much is left cannot decide whether to take a risk.
    */
-  sea: "#123240",
-  seaFoam: "#3d6d78",
+  sea: "#0b2734",
+  seaFoam: "#4d8794",
   /** The line between one lane and the next. */
   line: "#413021",
+
+  /**
+   * The tide line: wet sand between the dry beach and the surf.
+   *
+   * Sand that has been under water, so it reads as a cooler, darker version of
+   * the safe strip rather than as a third kind of thing. It has to be legible as
+   * somewhere to stand at a glance, because it is the last rest before the water
+   * and the tide is in the business of taking it away.
+   *
+   * Two tones alternating by row, for the same reason {@link PALETTE.sand} has
+   * them: this band can be six lanes deep, and six identical lanes read as one
+   * slab. A player who cannot count the rows left cannot decide whether to
+   * spend a wave cycle waiting, which is the whole decision the tide line
+   * exists to pose. A hairline rule was tried first and was invisible at the
+   * one device pixel it gets.
+   */
+  tideLine: ["#1f2126", "#272a30"] as [string, string],
+
+  /**
+   * The rule between two wet lanes, and between two surf lanes.
+   *
+   * The sand's warm brown rule is invisible against either, and a band without
+   * rules is a slab rather than a set of lanes. The tide line can be six lanes
+   * deep, and a player who cannot count them cannot plan a crossing — they can
+   * only guess how much beach is left, which is the one thing the fixed-length
+   * board exists to stop being a guess.
+   */
+  waterLine: "#39404a",
+
+  /**
+   * The surf: calm between sets, and the water of a breaking wave.
+   *
+   * `surfWash` states the push zone exactly, the same rule every hazard's art
+   * follows — the lane is drawn washed for precisely the ticks it will carry a
+   * crab, edge to edge, with no lip of foam extending past the effect or any
+   * part of the effect left undrawn. A wave you can see is a wave you can time.
+   *
+   * Calm surf is deliberately a good deal lighter than {@link PALETTE.sea}. The
+   * two started close enough to be indistinguishable, which put the finish line
+   * somewhere the player had to infer: a run is won by reaching the water, and
+   * being unsure which water is the winning one is the worst possible thing to
+   * be unsure about with the whole run behind you.
+   */
+  surf: "#1c4552",
+  surfWash: "#4a8494",
+  surfCrest: "#8fc4cf",
+
+  /**
+   * A crab that a wave has hold of, and cannot be killed.
+   *
+   * Pale and cool rather than orange: the immunity is a rule the player is meant
+   * to be able to see rather than one they have to infer from surviving
+   * something that looked fatal.
+   */
+  crabCarried: "#bfe3ea",
+  crabCarriedLimb: "#7fb3c1",
+  crabCarriedShell: "#e8f6f9",
 
   /**
    * Towels and sunbathers.

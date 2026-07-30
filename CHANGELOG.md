@@ -94,8 +94,44 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   from a strict subset of what that row could otherwise have produced and no
   seed can make an early lane harder than a late one. The beach past the ramp
   is bit-identical to what it was.
+- The tide, and with it the beach's three bands. The dry sand is unchanged; past
+  it lies the tide line — wet sand, safe to stand on — and past that the surf.
+  The tide advances as a function of the run's clock, moving the water's leading
+  edge from three lanes out to nine and narrowing the tide line to nothing. It
+  is not a speed multiplier and nothing gets faster: the escalation is the board
+  changing shape, so a fast run gets a breather before the last push and a slow
+  one arrives at the water with nowhere left to rest.
+- The surf, which carries rather than kills. A surf lane washes on a cycle,
+  lanes nearer the sea breaking first so a set reads as a wave running
+  shoreward, and a wave takes a crab standing in it one lane back toward shore.
+  The washed rectangle is exactly the push zone, drawn from the same predicate
+  that does the pushing. A carried crab is immune for the whole ride and a beat
+  past it, and is drawn pale so the immunity is a rule the player can see rather
+  than one they infer from surviving something that looked fatal.
+- `hasHazards`, asked instead of enumerating the lane kinds that have none. The
+  beach went from three kinds to six in one change and every site that had
+  spelled out the empty ones was a site that would have silently begun treating
+  the surf as solid ground.
 
 ### Fixed
+
+- The tide advances on the run's clock rather than on the tick, so a player who
+  studies the day's beach before starting is no longer charged a slice of the
+  escalation for looking. The timer already waited for the first input for
+  exactly that reason; the tide was not waiting with it, and twenty seconds of
+  reading silently spent a quarter of the tide. Hazards and waves still move on
+  the tick, because a board frozen until first input is one whose rhythms cannot
+  be read at all.
+- The shoreline foam is drawn on the last row before the sea rather than the
+  first row of it. Every lane draws its own upper rule, so asking the sea to
+  draw the shoreline put the foam a whole lane out to sea from the line it was
+  naming. Invisible while the last beach row was pale sand, and wrong the moment
+  the surf arrived — the one thing that mark has to be unambiguous about is
+  where winning starts.
+- The sea and calm surf are no longer nearly the same colour, and the tide line
+  is drawn in two alternating tones like the dry sand. A six-lane band in one
+  flat tone reads as a slab rather than as lanes, and a player who cannot count
+  the rows left cannot decide whether to spend a wave cycle waiting.
 
 - The beach no longer vanishes from behind the result screen. The loop stops
   when a run ends, so any resize after that cleared the canvas — `measure`
