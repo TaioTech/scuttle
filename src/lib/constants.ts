@@ -130,6 +130,26 @@ export const MIN_GAP = { drift: 32, still: 24 } as const;
 /** Every fourth lane is safe, giving a rhythm of three crossings and a breath. */
 export const SAFE_LANE_INTERVAL = 4;
 
+/**
+ * How many lanes of beach lie between the promenade and the sea.
+ *
+ * The beach is the same length every day — only what is in it varies. A
+ * generated length would make two days' times incomparable and a personal best
+ * meaningless, and it would turn "did you beat it" from a fact everybody shares
+ * into a question about which beach you happened to get.
+ *
+ * A multiple of {@link SAFE_LANE_INTERVAL} so the last thing before the water
+ * is a safe lane rather than a hazard the player is forced to gamble on with
+ * the whole run behind them.
+ *
+ * This number is a first guess and is meant to be moved. It is the run's
+ * length, and the run's length cannot be reasoned about — only played.
+ */
+export const BEACH_LANES = 32;
+
+/** The row the sea begins at. Reaching it wins the day. */
+export const SEA_ROW = BEACH_LANES + 1;
+
 /** Narrowest and widest a drifting hazard can be. */
 export const DRIFT_WIDTH = { min: 16, max: 34 } as const;
 
@@ -152,3 +172,49 @@ export const STILL_COUNT = { min: 2, max: 2 } as const;
 
 /** Proportion of hazard lanes that are static blockers rather than drifting. */
 export const STILL_LANE_CHANCE = 0.3;
+
+/**
+ * Ticks in one full stride of the crab's legs.
+ *
+ * Animation phase is derived from the tick and nothing else — never from a
+ * private counter or a frame delta — so two devices drawing the same tick draw
+ * the same crab. Twenty ticks is a third of a second, which reads as scurrying
+ * without turning into a blur at the scale the legs are actually drawn.
+ */
+export const GAIT_TICKS = 20;
+
+/**
+ * How far a leg swings, as a fraction of the crab's half-height.
+ *
+ * Scaled by how fast the crab is actually moving, so a standing crab shuffles
+ * and a running one strides. Purely cosmetic: the collision box never changes.
+ */
+export const GAIT_SWING = 0.5;
+
+/**
+ * Board units of lateral speed at which the leg swing reaches full amplitude.
+ *
+ * Set below {@link LATERAL_SPEED} so that ordinary movement looks committed
+ * rather than tentative.
+ */
+export const GAIT_FULL_SPEED = LATERAL_SPEED * 0.6;
+
+/**
+ * Board units of drifting hazard per beachgoer.
+ *
+ * A drifting hazard is up to thirty-four units wide, which is far too wide to
+ * read as one person. It is drawn as a group of walkers spaced across the whole
+ * hazard instead, which fills the collision box honestly — art that is narrower
+ * than the box it kills you from is art that reads as the game cheating.
+ *
+ * Tight enough that a group reads as a crowd rather than as individuals with
+ * crossable daylight between them. The shadow beneath carries the true extent,
+ * but the figures should not be arguing with it.
+ */
+export const WALKER_SPACING = 8;
+
+/** Ticks in one full stride of a walking beachgoer. */
+export const WALKER_GAIT_TICKS = 34;
+
+/** Board units of towel per stripe. */
+export const TOWEL_STRIPE_SPACING = 7;

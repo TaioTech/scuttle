@@ -1,4 +1,5 @@
 import {
+  BEACH_LANES,
   BOARD_WIDTH,
   CYCLE_SPAN,
   DRIFT_COUNT,
@@ -29,6 +30,9 @@ export type Hazard = {
 /** A lane with nothing in it. Somewhere to stand and think. */
 export type SafeLane = { kind: "safe" };
 
+/** The water at the end of the beach. Reaching it is winning. */
+export type SeaLane = { kind: "sea" };
+
 /** Towels and sunbathers: dry sand that simply is not available. */
 export type StillLane = { kind: "still"; hazards: Hazard[] };
 
@@ -48,7 +52,7 @@ export type DriftLane = {
  * line and the surf can be added later as new variants that the compiler
  * forces every caller to handle.
  */
-export type Lane = SafeLane | StillLane | DriftLane;
+export type Lane = SafeLane | SeaLane | StillLane | DriftLane;
 
 /**
  * A whole beach, addressed by row.
@@ -75,11 +79,15 @@ export function beachFor(seed: number): Beach {
  * because nothing needs to be — a lane is a few dozen arithmetic operations,
  * and a cache is a place for two devices to disagree.
  *
- * Row zero is the crab's starting row and is always safe.
+ * Row zero is the crab's starting row and is always safe, and everything past
+ * {@link BEACH_LANES} is the sea.
  */
 export function laneAt(seed: number, row: number): Lane {
   // Row zero and everything behind it is the promenade the crab starts on.
   if (row <= 0) return { kind: "safe" };
+  // The beach ends. Every row past it is water, so a crab that overshoots the
+  // shoreline is still in the sea rather than off the end of the world.
+  if (row > BEACH_LANES) return { kind: "sea" };
   if (row % SAFE_LANE_INTERVAL === 0) return { kind: "safe" };
 
   const rng = deriveRng(seed, row);
@@ -146,7 +154,7 @@ export function hazardStepPerTick(lane: Lane): number {
  * than asserted — see the board tests.
  */
 export function gapsOf(lane: Lane): number[] {
-  if (lane.kind === "safe") return [];
+  if (lane.kind === "safe" || lane.kind === "sea") return [];
 
   const cyclic = lane.kind === "drift";
   const span = cyclic ? CYCLE_SPAN : BOARD_WIDTH;
@@ -172,7 +180,9 @@ export function gapsOf(lane: Lane): number[] {
 
 /** The narrowest gap the given lane was built to leave. */
 export function minGapOf(lane: Lane): number {
-  if (lane.kind === "safe") return Number.POSITIVE_INFINITY;
+  if (lane.kind === "safe" || lane.kind === "sea") {
+    return Number.POSITIVE_INFINITY;
+  }
   return lane.kind === "drift" ? MIN_GAP.drift : MIN_GAP.still;
 }
 

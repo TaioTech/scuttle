@@ -13,7 +13,14 @@ import {
 } from "./constants";
 import { drainTicks } from "./loop";
 import { seedForDay } from "./rng";
-import { createSim, type Input, playerY, type SimState, stepSim } from "./sim";
+import {
+  createSim,
+  formatElapsed,
+  type Input,
+  playerY,
+  type SimState,
+  stepSim,
+} from "./sim";
 
 const SEED = seedForDay(42);
 const DAY: Beach = beachFor(SEED);
@@ -26,6 +33,9 @@ const DAY: Beach = beachFor(SEED);
  * so measuring the step on the real beach mostly measures dying.
  */
 const EMPTY: Beach = () => ({ kind: "safe" });
+
+/** Three lanes of safe sand and then the water, for testing the finish. */
+const SHORE: Beach = (row) => (row >= 3 ? { kind: "sea" } : { kind: "safe" });
 
 const IDLE: Input = { left: false, right: false, forward: false };
 const LEFT: Input = { ...IDLE, left: true };
@@ -47,6 +57,15 @@ function hold(
 /** One tick on the empty beach. */
 function oneTick(state: SimState, input: Input): SimState {
   return stepSim(state, input, EMPTY);
+}
+
+/** Steps forward `lanes` times on {@link SHORE}, landing each one. */
+function crossTo(lanes: number): SimState {
+  let state = createSim();
+  for (let lane = 0; lane < lanes; lane += 1) {
+    state = hold(stepSim(state, FORWARD, SHORE), IDLE, STEP_TICKS, SHORE);
+  }
+  return state;
 }
 
 describe("lateral movement", () => {
@@ -220,6 +239,33 @@ describe("collision", () => {
     expect(hold(dead, FORWARD, 100, DAY)).toBe(dead);
   });
 
+  it("wins when the crab reaches the water", () => {
+    let state = createSim();
+    for (let lane = 0; lane < 3; lane += 1) {
+      expect(state.won).toBe(false);
+      state = hold(oneTick(state, FORWARD), IDLE, STEP_TICKS, SHORE);
+    }
+    expect(state.row).toBe(3);
+    expect(state.won).toBe(true);
+    expect(state.alive).toBe(true);
+  });
+
+  it("stops advancing once the sea is reached", () => {
+    const won = crossTo(3);
+    expect(won.won).toBe(true);
+    expect(hold(won, FORWARD, 100, SHORE)).toBe(won);
+  });
+
+  it("asks the beach where the water is rather than a row number", () => {
+    // The tide will move the shoreline. A simulation that compares against a
+    // fixed row is one the tide cannot move.
+    const nearer: Beach = (row) =>
+      row >= 1 ? { kind: "sea" } : { kind: "safe" };
+    const state = hold(oneTick(createSim(), FORWARD), IDLE, STEP_TICKS, nearer);
+    expect(state.row).toBe(1);
+    expect(state.won).toBe(true);
+  });
+
   it("counts the furthest lane the crab actually reached", () => {
     let state = createSim();
     state = hold(oneTick(state, FORWARD), IDLE, STEP_TICKS);
@@ -229,6 +275,56 @@ describe("collision", () => {
     // A step that is still in the air has not been survived yet.
     const inTheAir = oneTick(state, FORWARD);
     expect(inTheAir.furthest).toBe(1);
+  });
+});
+
+describe("the clock", () => {
+  it("does not start until the player touches something", () => {
+    const waiting = hold(createSim(), IDLE, 300);
+    expect(waiting.started).toBe(false);
+    expect(waiting.elapsed).toBe(0);
+  });
+
+  it("starts on the first input and counts every tick after it", () => {
+    const idled = hold(createSim(), IDLE, 100);
+    const moved = hold(idled, RIGHT, 60);
+    expect(moved.started).toBe(true);
+    expect(moved.elapsed).toBe(60);
+
+    // Letting go does not stop it. The run is running.
+    expect(hold(moved, IDLE, 40).elapsed).toBe(100);
+  });
+
+  it("counts ticks and not milliseconds", () => {
+    // The same run at any frame rate is the same number of ticks, which is the
+    // only reason a shared time means anything.
+    expect(formatElapsed(0)).toBe("0.0s");
+    expect(formatElapsed(60)).toBe("1.0s");
+    expect(formatElapsed(90)).toBe("1.5s");
+    expect(formatElapsed(4_215)).toBe("70.3s");
+  });
+
+  it("stops when the sea is reached", () => {
+    const won = crossTo(3);
+    expect(won.won).toBe(true);
+    const after = hold(won, RIGHT, 200, SHORE);
+    expect(after.elapsed).toBe(won.elapsed);
+  });
+
+  it("stops when the crab dies", () => {
+    // A lane that is solid all the way across, so the death needs no searching
+    // for and the test is about the clock rather than about the beach.
+    const lethal: Beach = () => ({
+      kind: "still",
+      hazards: [{ center: BOARD_WIDTH / 2, halfWidth: BOARD_WIDTH / 2 }],
+    });
+
+    const running = hold(createSim(), RIGHT, 50);
+    expect(running.elapsed).toBe(50);
+
+    const dead = stepSim(running, IDLE, lethal);
+    expect(dead.alive).toBe(false);
+    expect(hold(dead, RIGHT, 100).elapsed).toBe(dead.elapsed);
   });
 });
 

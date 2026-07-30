@@ -8,22 +8,27 @@ import {
   minGapOf,
 } from "./board";
 import {
+  BEACH_LANES,
   BOARD_WIDTH,
   CYCLE_SPAN,
   DT,
   MIN_GAP,
   PLAYER_HALF_W,
   SAFE_LANE_INTERVAL,
+  SEA_ROW,
   WRAP_MARGIN,
 } from "./constants";
 import { seedForDay } from "./rng";
 
 const SEED = seedForDay(42);
-const ROWS = 600;
 
-/** Every lane of a day's beach, which is what most of these assertions sweep. */
+/**
+ * Every lane of a day's beach, promenade to shoreline, which is what most of
+ * these assertions sweep. The sea past it is not part of the beach and is
+ * checked on its own.
+ */
 function beach(seed = SEED): Lane[] {
-  return Array.from({ length: ROWS }, (_, row) => laneAt(seed, row));
+  return Array.from({ length: BEACH_LANES + 1 }, (_, row) => laneAt(seed, row));
 }
 
 describe("laneAt", () => {
@@ -52,6 +57,33 @@ describe("laneAt", () => {
   it("produces both still and drifting hazard lanes", () => {
     const kinds = new Set(beach().map((lane) => lane.kind));
     expect(kinds).toEqual(new Set(["safe", "still", "drift"]));
+  });
+
+  it("ends the beach at the sea", () => {
+    expect(laneAt(SEED, BEACH_LANES).kind).not.toBe("sea");
+    expect(laneAt(SEED, SEA_ROW).kind).toBe("sea");
+  });
+
+  it("keeps every row past the shoreline as sea", () => {
+    // A crab that somehow overshoots is still in the water rather than off the
+    // end of a beach that stopped being generated.
+    for (let row = SEA_ROW; row < SEA_ROW + 50; row += 1) {
+      expect(laneAt(SEED, row).kind).toBe("sea");
+    }
+  });
+
+  it("puts a safe lane immediately before the sea", () => {
+    // The last thing between the player and the water should not be a hazard
+    // they have to gamble on with the whole run already behind them.
+    expect(laneAt(SEED, BEACH_LANES).kind).toBe("safe");
+  });
+
+  it("gives every day the same length of beach", () => {
+    for (let day = 0; day < 50; day += 1) {
+      const seed = seedForDay(day);
+      expect(laneAt(seed, BEACH_LANES).kind).not.toBe("sea");
+      expect(laneAt(seed, SEA_ROW).kind).toBe("sea");
+    }
   });
 
   it("does not read an unseeded source", () => {
@@ -83,7 +115,7 @@ describe("lane layout", () => {
 
   it("fills its lane exactly, leaving no hazard hanging off the end", () => {
     for (const lane of beach()) {
-      if (lane.kind === "safe") continue;
+      if (lane.kind === "safe" || lane.kind === "sea") continue;
       const span = lane.kind === "drift" ? CYCLE_SPAN : BOARD_WIDTH;
       for (const hazard of lane.hazards) {
         expect(hazard.center - hazard.halfWidth).toBeGreaterThanOrEqual(-1e-9);
@@ -106,9 +138,12 @@ describe("lane layout", () => {
   });
 
   it("holds every lane crossable across many days", () => {
-    for (let day = 0; day < 60; day += 1) {
+    // The beach is thirty-odd lanes rather than the six hundred rows this used
+    // to sweep, so the day count carries the coverage instead: three years of
+    // beaches, every lane of every one of them.
+    for (let day = 0; day < 1_100; day += 1) {
       for (const lane of beach(seedForDay(day))) {
-        if (lane.kind === "safe") continue;
+        if (lane.kind === "safe" || lane.kind === "sea") continue;
         expect(lane.hazards.length).toBeGreaterThan(0);
         for (const gap of gapsOf(lane)) {
           expect(gap).toBeGreaterThanOrEqual(minGapOf(lane) - 1e-9);

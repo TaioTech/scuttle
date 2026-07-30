@@ -117,8 +117,12 @@ It ships as its own repo and deployment. The hub gains one entry in
 ### Movement
 
 - Lateral input is held and produces smooth motion along the current lane.
-  Forward input is a discrete committed step into the next lane. Backward is
-  available and equally slow, so retreating is possible but costly.
+  Forward input is a discrete committed step into the next lane. There is no
+  backward: an earlier draft of this spec offered retreat as a slow, costly
+  option, which contradicted the three-button scope above and AC #8 in the same
+  document. Resolved on 2026-07-29 in favour of three buttons. A step you cannot
+  take back is more committing when there is no retreat at all, and a misread
+  lane costing the run is the game working rather than failing.
 - The step being uninterruptible is what gives the game its tension. It also
   means collision has to be resolved against the step's whole path, not only its
   endpoint, or a fast hazard will pass through a stepping crab.
@@ -220,7 +224,8 @@ layout is a matter for that repo's plan.
 | # | Question | Context | Decision |
 |---|----------|---------|----------|
 | 1 | Is the app called Scuttle? | Working title. Alternatives raised: Sidestep, Low Tide, Undertow, Highwater. The slug is permanent once shipped and linked. | **Decided: Scuttle**, 2026-07-29. The repo is `TaioTech/scuttle` and it deploys to `scuttle.taiotech.com`. Settled before implementation precisely because the slug cannot move afterwards. |
-| 2 | One run a day, or unlimited with a daily that counts? | One run makes a shared distance meaningful but is unforgiving for an arcade game, where failure is frequent and often instant. Chroma's puzzles fail gently; this does not. | **Assumed one run**, for consistency with Chroma and because scarcity is the shared premise. This is the most likely assumption to be wrong. |
-| 3 | What is the win condition — is there one? | Reaching the sea could end the run as a win, or could loop into a harder beach for an endless distance score. | **Assumed the sea is a win** that ends the day's run, with distance as the score when the player fails short of it. A loop can be added later without invalidating the seed. |
+| 2 | One run a day, or unlimited with a daily that counts? | One run makes a shared distance meaningful but is unforgiving for an arcade game, where failure is frequent and often instant. Chroma's puzzles fail gently; this does not. | **Decided: one run a day at ship, unlimited until then**, 2026-07-29. Scarcity is the shared premise and stays the target, but a prototype that can be played once a day cannot be tuned, and difficulty is still flat because the tide does not exist. The limit lands with the tide, not before. |
+| 3 | What is the win condition — is there one? | Reaching the sea could end the run as a win, or could loop into a harder beach for an endless distance score. | **Decided: the sea is a win**, 2026-07-29, after the movement prototype played well and its endlessness became the thing missing from it. The beach is a fixed length, the score is time, and shells are an optional second axis. Specified in [`finish-line.md`](finish-line.md). |
 | 4 | Does the player carry anything? | The hermit-crab framing — crossing to find a bigger shell — gives the run a reason and a possible carried-object mechanic. It may be flavour only. | Deferred. Flavour first; revisit only if the run needs another decision layer. |
-| 5 | Does a collected shell do anything mechanically? | Pure score, or something that changes a run — one hit absorbed, say. | Pending — settle once the base run is tunable |
+| 5 | Does a collected shell do anything mechanically? | Pure score, or something that changes a run — one hit absorbed, say. | **Decided: pure score**, 2026-07-29. A shell is a number and a risk and nothing else. One life stays one life, so a player always knows exactly what dying costs, and a shared distance stays comparable between two people who spent their shells differently. |
+| 6 | Is there a persistent high score board beyond AC #13's personal best? | Raised 2026-07-29 after the movement prototype played well. The interesting version is a score service shared across TaioTech apps rather than one owned by Scuttle, which reverses the no-backend decision above and needs identity and anti-cheat to be worth having. | **Deferred**, 2026-07-29. Written up in [`shared-scores.md`](shared-scores.md). The device-local personal best in AC #13 is unaffected and still in scope. |

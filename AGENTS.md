@@ -66,6 +66,10 @@ then plays three thousand ticks.
 6. `loop.ts` — `drainTicks` turns elapsed milliseconds into a count of ticks.
    The only module that knows real time exists.
 7. `render.ts`, `palette.ts` — draw an interpolated state to a 2D context.
+   Hazards and the crab are drawn procedurally, and every animation phase is a
+   function of the interpolated tick. Nothing here may hold a counter of its
+   own: a renderer that accumulates its own phase drifts between devices, and
+   the whole point of the daily is that two people see the same beach.
 
 **`src/components/` has the clock.** `Game.tsx` owns the
 `requestAnimationFrame` accumulator and the canvas; `Controls.tsx` is three
@@ -88,6 +92,19 @@ frame of it.
   the tick for exactly this reason: incremental addition drifts, and two devices
   that started identically end up on different beaches an hour in.
 - **Nothing may sample an unseeded source or read a clock inside `lib/`.**
+- **Art may not be narrower than the box it kills from.** A hazard is lethal
+  across its whole collision box. Drawing it as separate figures shows daylight
+  between them, a player reads that daylight as a gap, and dies to a crossing
+  that looked open — the same complaint swept collision exists to prevent,
+  arriving through the renderer instead. Anything drawn for a hazard states the
+  full extent of its box; `PALETTE.driftMass` is what that looks like. The
+  crab's shell is a rounded rectangle filling its box for the same reason: an
+  inscribed ellipse leaves the corners visually empty and lethally full.
+- **A backgrounded browser pane cannot be used to check the game.** The loop is
+  `requestAnimationFrame`, which a hidden tab does not fire, and `setTimeout` is
+  throttled alongside it. The symptom is a game that looks broken in exactly the
+  way a real bug would: a blank canvas, a frozen counter, and input that does
+  nothing. Bring the pane to the front before believing any of it.
 - **`STILL_LANE_CHANCE` and the lane rhythm change the beach.** Every constant
   in `constants.ts` is part of the seed's meaning: changing one changes what
   every past day would have been. Before a ship, that is free. Afterwards it is

@@ -9,6 +9,7 @@ import {
   PLAYER_HALF_W,
   STEP_BUFFER_TICKS,
   STEP_TICKS,
+  TICK_HZ,
 } from "./constants";
 import {
   type Beach,
@@ -65,8 +66,27 @@ export type SimState = {
   buffer: number;
   /** Whether forward was down last tick, so a press can be told from a hold. */
   forwardWasDown: boolean;
-  /** Furthest lane reached, which is the run's score. */
+  /** Furthest lane reached. The score of a run that ended on the sand. */
   furthest: number;
+  /** Whether the crab reached the sea. The run is over and it was won. */
+  won: boolean;
+  /**
+   * Whether the player has touched a control yet.
+   *
+   * The clock waits for them. A run timed from page load would charge the
+   * player for the first paint, and it would take away the look at the day's
+   * beach before committing to it — which is a real part of a game about
+   * reading lanes, not dead time.
+   */
+  started: boolean;
+  /**
+   * Ticks since the first input. The score of a run that reached the sea.
+   *
+   * Ticks rather than milliseconds, because the simulation is forbidden a clock
+   * and because a time measured in anything else is a time two devices can
+   * disagree about. Seconds are a display concern.
+   */
+  elapsed: number;
 };
 
 /** A run at its first tick, before anything has moved. */
@@ -80,7 +100,21 @@ export function createSim(): SimState {
     buffer: 0,
     forwardWasDown: false,
     furthest: 0,
+    won: false,
+    started: false,
+    elapsed: 0,
   };
+}
+
+/**
+ * A run's time as seconds, to one decimal place.
+ *
+ * The only place ticks are turned into human time, and it is deliberately not
+ * in the simulation's way: `elapsed` stays a tick count everywhere that two
+ * devices have to agree, and becomes a string only when someone reads it.
+ */
+export function formatElapsed(ticks: number): string {
+  return `${(ticks / TICK_HZ).toFixed(1)}s`;
 }
 
 /**
@@ -98,7 +132,7 @@ export function stepSim(
   input: Input,
   beach: Beach,
 ): SimState {
-  if (!state.alive) return state;
+  if (!state.alive || state.won) return state;
 
   const fromX = state.x;
   const fromY = playerY(state);
@@ -136,6 +170,10 @@ export function stepSim(
     }
   }
 
+  // The clock starts on the first thing the player does and runs until the sea.
+  const started =
+    state.started || input.left || input.right || input.forward;
+
   const next: SimState = {
     ...state,
     tick: state.tick + 1,
@@ -145,6 +183,12 @@ export function stepSim(
     buffer,
     forwardWasDown: input.forward,
     furthest: Math.max(state.furthest, row),
+    // Asked of the beach rather than compared against a row number. When the
+    // tide arrives it moves where the water is, and a shoreline the simulation
+    // has hard-coded is one the tide cannot move.
+    won: beach(row).kind === "sea",
+    started,
+    elapsed: started ? state.elapsed + 1 : state.elapsed,
   };
 
   next.alive = !struck(next, beach, fromX, fromY);
@@ -201,7 +245,7 @@ function struck(
 
   for (let row = Math.max(0, lowest); row <= highest; row += 1) {
     const lane = beach(row);
-    if (lane.kind === "safe") continue;
+    if (lane.kind === "safe" || lane.kind === "sea") continue;
     if (laneStruck(lane, row, state.tick, crabStart, crabEnd)) return true;
   }
 
