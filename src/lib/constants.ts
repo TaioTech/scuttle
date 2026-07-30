@@ -256,6 +256,75 @@ export const STILL_COUNT = { min: 2, max: 2 } as const;
 export const STILL_LANE_CHANCE = 0.3;
 
 /**
+ * Ticks between one seagull dive and the next, and how the dive is divided.
+ *
+ * The bird locks onto wherever the crab is standing, darkens that patch of
+ * sand while it circles, and then hits it. `SEAGULL_WARN_TICKS` is the lead
+ * time the parent spec's acceptance criterion is about: long enough that an
+ * alert player moves out of it, and it is a named constant precisely so that a
+ * later polish pass cannot quietly shorten the warning by adjusting a curve.
+ */
+export const SEAGULL_PERIOD_TICKS = 620;
+
+/** Ticks the shadow grows on the sand before the bird arrives. */
+export const SEAGULL_WARN_TICKS = 96;
+
+/** Ticks the strike itself is lethal, once the warning has run out. */
+export const SEAGULL_STRIKE_TICKS = 22;
+
+/** Half the width of the patch a seagull strike covers, in board units. */
+export const SEAGULL_HALF_W = 8;
+
+/**
+ * Ticks between frisbee throws, and how long one is in the air.
+ *
+ * A frisbee crosses the board rather than patrolling a lane, and it is in the
+ * air for a good deal less than the gap between throws — it is an interruption
+ * to be waited out, not a second set of lanes to solve.
+ */
+export const FRISBEE_PERIOD_TICKS = 540;
+
+/** Ticks a frisbee spends crossing the board. */
+export const FRISBEE_FLIGHT_TICKS = 150;
+
+/** Half the width and half the height of a frisbee's box, in board units. */
+export const FRISBEE_HALF = { width: 5, height: 4 } as const;
+
+/**
+ * How many lanes a frisbee rises and falls across its flight.
+ *
+ * The parent spec calls it a hazard that "arcs across two lanes at once", which
+ * is what this is: its centre travels a full lane up the beach and back down
+ * again, so at any moment it overlaps two rows and the pair it overlaps changes
+ * as it flies.
+ */
+export const FRISBEE_ARC_LANES = 1;
+
+/** Proportion of still lanes where one blocker is an umbrella that plants. */
+export const UMBRELLA_CHANCE = 0.35;
+
+/**
+ * The window, in run ticks, within which an umbrella plants itself.
+ *
+ * Spread across most of a run so the beach keeps changing behind and ahead of
+ * the player rather than all at once. The earliest is well after the opening:
+ * a lane that gained a hazard while the player was still learning the controls
+ * would read as the game moving the goalposts rather than as the beach filling
+ * up.
+ */
+export const UMBRELLA_PLANTS = { earliest: 420, latest: 2_700 } as const;
+
+/**
+ * Ticks an umbrella spends visibly arriving before it is lethal.
+ *
+ * The spec's obligation for this hazard: a thing that was not lethal a moment
+ * ago and now is needs a moment the player can see, rather than appearing
+ * between one frame and the next. Comfortably longer than a forward step, so a
+ * player already committed to the lane can still land and move clear.
+ */
+export const UMBRELLA_PLANT_TICKS = 45;
+
+/**
  * Proportion of hazard lanes that hide a shell.
  *
  * Around seven on a beach, which is enough that a collected count is a real

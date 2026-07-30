@@ -200,6 +200,9 @@ describe("collision", () => {
       if (lane.kind !== "still") continue;
       const blocker = lane.hazards.find(
         (h) =>
+          // An umbrella that has not planted yet is not lethal, which is the
+          // whole point of it — this test wants something that kills now.
+          h.plantsAt === 0 &&
           h.center > PLAYER_HALF_W && h.center < BOARD_WIDTH - PLAYER_HALF_W,
       );
       if (blocker) return { row, x: blocker.center };
@@ -327,7 +330,9 @@ describe("the clock", () => {
     // for and the test is about the clock rather than about the beach.
     const lethal: Beach = () => ({
       kind: "still",
-      hazards: [{ center: BOARD_WIDTH / 2, halfWidth: BOARD_WIDTH / 2 }],
+      hazards: [
+        { center: BOARD_WIDTH / 2, halfWidth: BOARD_WIDTH / 2, plantsAt: 0 },
+      ],
       shell: null,
     });
 
@@ -474,7 +479,9 @@ describe("the surf", () => {
       row === deadRow
         ? {
             kind: "still",
-            hazards: [{ center: BOARD_WIDTH / 2, halfWidth: BOARD_WIDTH / 2 }],
+            hazards: [
+        { center: BOARD_WIDTH / 2, halfWidth: BOARD_WIDTH / 2, plantsAt: 0 },
+      ],
             shell: null,
           }
         : { kind: "surf" };

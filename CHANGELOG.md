@@ -139,6 +139,32 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   same reason: a player who dies at lane four and wins on the next go has still
   reached the sea today.
 - A live shell count in the header, next to the day.
+- The umbrella, which plants itself into a still lane partway through a run and
+  is visibly arriving before it is lethal. It is a flag on a hazard rather than
+  a hazard that appears, which is what keeps the crossability guarantee intact:
+  the lane is laid out once with every hazard present and every gap at its
+  minimum, so an umbrella that has not planted only ever makes a lane wider
+  than the guarantee requires. No seed and no moment can produce a lane that
+  cannot be crossed.
+- The frisbee, which arcs across two lanes at once and is aimed at the band the
+  crab was in when it was let go. A frisbee thrown to a seeded row is a hazard
+  most runs never meet — the beach is thirty-two lanes and eleven are ever on
+  screen — and aiming it stays fair because it crosses in sideways from off the
+  board: it is seen coming and dodged by moving, never by having guessed right.
+  Its box is drawn around the disc, because the spin makes the disc look
+  thinner than it kills from twice a cycle.
+- The seagull, announced by a hard-edged patch of shadow that grows on the sand
+  before the bird arrives. It locks onto where the crab is standing and then
+  that patch is fixed — a shadow that kept following would be a warning about
+  something there is no getting out of the way of. The patch is harmless for
+  every tick of the warning; only the bird kills. The lead time is a named
+  constant with a test measuring it against what the crab can actually do, so a
+  later polish pass cannot quietly shorten the warning.
+- `roamers.ts`, for hazards that belong to no lane, and a second render pass for
+  them. `drawFrame` draws the board exactly as before and then draws roamers in
+  continuous board coordinates, so a frisbee is honestly half in one lane and
+  half in the next instead of being clipped into whichever row happened to draw
+  it, and the crab is still drawn over everything.
 - `hasHazards`, asked instead of enumerating the lane kinds that have none. The
   beach went from three kinds to six in one change and every site that had
   spelled out the empty ones was a site that would have silently begun treating
@@ -172,14 +198,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Changed
 
-- The crab's claws are drawn inside its collision box rather than reaching past
-  it. Held outboard they were solid mass sitting two and a half board units
-  beyond the box on each side, which made the crab read some forty per cent
-  wider than the width it actually dies at — so every gap looked tighter than it
-  was and the player hunted for room the lane already had. Art wider than the
-  box is the milder half of the same fault as art narrower than it: one kills
-  you from daylight you could see, the other hides room you were entitled to.
-  The collision box is unchanged; it was never the thing that grew.
+- The crab's claws straddle the edge of its shell rather than being held well
+  outboard of it. They were solid mass two and a half board units past the box
+  on each side, which made the crab read some forty per cent wider than the
+  width it dies at, so every gap looked tighter than it was. Tucking them wholly
+  inside was tried first and was worse in the way that matters — it turned the
+  crab into a rounded rectangle, and the pincers are most of what makes it a
+  crab rather than a token. Straddling costs a fraction of a body width of
+  overhang and buys the silhouette back. The collision box is unchanged; it was
+  never the thing that grew.
+- The sunbather on a towel reads as a person rather than a fish. It was a wide
+  ellipse with a circle overlapping its edge, which at the size hazards are
+  actually drawn came out as one body with a bulge at one end. What was missing
+  was not detail but joints: a neck's worth of gap, shoulders wider than the
+  waist, and legs that end somewhere.
 - Hazards and the crab are drawn as figures rather than flat rectangles.
   Beachgoers are a crowd that strides, blockers are striped towels with someone
   lying on them, and the crab has legs that swing with how fast it is actually

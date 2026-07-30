@@ -19,12 +19,23 @@ import {
   hasHazards,
   hazardCenterAt,
   hazardStepPerTick,
+  isPlanted,
   type Lane,
   shellOf,
   type StillLane,
   surfWashingAt,
 } from "./board";
 import { sweptOverlap, type Box } from "./collision";
+import {
+  type Frisbee,
+  frisbeeAt,
+  frisbeeBox,
+  frisbeeLocksOn,
+  seagullAt,
+  seagullBox,
+  seagullLocksOn,
+  type Seagull,
+} from "./roamers";
 
 /** What the three buttons are doing on the tick about to be simulated. */
 export type Input = {
@@ -116,6 +127,19 @@ export type SimState = {
    * not be worth two.
    */
   shells: number;
+  /**
+   * Where the seagull is currently aimed, fixed at the moment it locked on.
+   *
+   * Stored rather than derived because it depends on where the crab happened
+   * to be standing on one particular tick, which is exactly the kind of fact a
+   * closed form cannot reconstruct. Locking once is what makes the threat
+   * avoidable — a shadow that kept following would be a warning about
+   * something there is no getting out of the way of.
+   */
+  seagullX: number;
+  seagullRow: number;
+  /** The row a frisbee was aimed at, fixed when it was let go. */
+  frisbeeRow: number;
 };
 
 /** How many shells have been picked up. */
@@ -152,6 +176,20 @@ export function createSim(): SimState {
     elapsed: 0,
     immune: 0,
     shells: 0,
+    seagullX: BOARD_WIDTH / 2,
+    seagullRow: 0,
+    frisbeeRow: 0,
+  };
+}
+
+/** The roamers as they stand, for the collision pass and the renderer. */
+export function roamersOf(
+  state: SimState,
+  seed: number,
+): { frisbee: Frisbee | null; seagull: Seagull | null } {
+  return {
+    frisbee: frisbeeAt(seed, state.elapsed, state.frisbeeRow),
+    seagull: seagullAt(state.elapsed, state.seagullX, state.seagullRow),
   };
 }
 
@@ -180,6 +218,14 @@ export function stepSim(
   state: SimState,
   input: Input,
   beach: Beach,
+  /**
+   * The day's seed, for the roamers that are not part of any lane.
+   *
+   * Passed rather than reached for, and defaulted so every test that only
+   * cares about movement or lanes keeps working — a beach with no seed simply
+   * has no frisbee on it, which is the same fixture those tests already used.
+   */
+  seed = 0,
 ): SimState {
   if (!state.alive || state.won) return state;
 
@@ -251,9 +297,20 @@ export function stepSim(
     buffer = 0;
   }
 
+  // The seagull picks its patch of sand on one tick and then that patch is
+  // fixed. Locked to where the crab is *now*, after this tick's movement, so
+  // the warning is about somewhere the player actually is.
+  const locking = seagullLocksOn(elapsed);
+  const seagullX = locking ? x : state.seagullX;
+  const seagullRow = locking ? row : state.seagullRow;
+  const frisbeeRow = frisbeeLocksOn(elapsed) ? row : state.frisbeeRow;
+
   const next: SimState = {
     ...state,
     tick,
+    seagullX,
+    seagullRow,
+    frisbeeRow,
     x,
     row,
     step,
@@ -269,7 +326,12 @@ export function stepSim(
     elapsed,
   };
 
-  next.alive = immune > 0 || !struck(next, at, fromX, fromY);
+  next.alive =
+    immune > 0 ||
+    !(
+      struck(next, at, fromX, fromY) ||
+      caughtByRoamer(next, seed, fromX, fromY)
+    );
   next.shells = gathered(next, at, fromY);
 
   return next;
@@ -356,7 +418,9 @@ function struck(
   for (let row = Math.max(0, lowest); row <= highest; row += 1) {
     const lane = at(row);
     if (!hasHazards(lane)) continue;
-    if (laneStruck(lane, row, state.tick, crabStart, crabEnd)) return true;
+    if (laneStruck(lane, row, state.tick, state.elapsed, crabStart, crabEnd)) {
+      return true;
+    }
   }
 
   return false;
@@ -366,6 +430,7 @@ function laneStruck(
   lane: StillLane | DriftLane,
   row: number,
   tick: number,
+  elapsed: number,
   crabStart: Box,
   crabEnd: Box,
 ): boolean {
@@ -373,6 +438,11 @@ function laneStruck(
   const y = laneY(row);
 
   for (const hazard of lane.hazards) {
+    // An umbrella occupies its place in the layout from the start and only
+    // becomes lethal when it plants. Skipping it here rather than leaving it
+    // out of the lane is what keeps the lane itself pure in the seed and the
+    // row, and what keeps the gap arithmetic ignorant that any of this happens.
+    if (!isPlanted(hazard, elapsed)) continue;
     // The hazard's position at the end of the tick is authoritative, and its
     // start is that position rewound by one tick's drift in a straight line.
     // Reading the start from the previous tick's wrapped position instead would
@@ -407,4 +477,53 @@ function laneStruck(
 
 function clamp(value: number, min: number, max: number): number {
   return value < min ? min : value > max ? max : value;
+}
+
+/**
+ * Whether any of the roamers caught the crab this tick.
+ *
+ * Swept like everything else — the frisbee is the fastest thing on the beach
+ * and testing where it ended up would let it pass clean through a crab, which
+ * is the exact complaint `collision.ts` exists to prevent.
+ *
+ * The seagull is only lethal once it is actually down. Its warning is a shadow
+ * and a shadow does not kill you; the whole point of the lead time is that the
+ * patch is harmless for every tick the player can still see it and react.
+ */
+function caughtByRoamer(
+  state: SimState,
+  seed: number,
+  fromX: number,
+  fromY: number,
+): boolean {
+  const toY = playerY(state);
+  const crabStart: Box = {
+    x: fromX,
+    y: fromY,
+    halfWidth: PLAYER_HALF_W,
+    halfHeight: PLAYER_HALF_H,
+  };
+  const crabEnd: Box = {
+    x: state.x,
+    y: toY,
+    halfWidth: PLAYER_HALF_W,
+    halfHeight: PLAYER_HALF_H,
+  };
+
+  const previousElapsed = Math.max(0, state.elapsed - 1);
+
+  const frisbee = frisbeeAt(seed, state.elapsed, state.frisbeeRow);
+  if (frisbee !== null) {
+    const before = frisbeeAt(seed, previousElapsed, state.frisbeeRow);
+    const start = before === null ? frisbeeBox(frisbee) : frisbeeBox(before);
+    if (sweptOverlap(crabStart, crabEnd, start, frisbeeBox(frisbee))) return true;
+  }
+
+  const seagull = seagullAt(state.elapsed, state.seagullX, state.seagullRow);
+  if (seagull !== null && seagull.striking) {
+    const box = seagullBox(seagull);
+    if (sweptOverlap(crabStart, crabEnd, box, box)) return true;
+  }
+
+  return false;
 }

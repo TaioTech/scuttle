@@ -145,6 +145,35 @@ export const PALETTE = {
   shell: "#fbcfe8",
   shellRidge: "#f472b6",
 
+  /**
+   * An umbrella: the canopy, its shaded underside, and the pole.
+   *
+   * Brighter than a towel because it is the one dry-sand hazard that was not
+   * there a moment ago, and a thing that arrives has to be noticed arriving.
+   */
+  umbrella: "#b0796a",
+  umbrellaShade: "#8a5c50",
+  umbrellaPole: "#6a6058",
+
+  /** A frisbee in the air, and the mark on the sand it kills from. */
+  frisbee: "#84cc16",
+  frisbeeRim: "#bef264",
+
+  /**
+   * The seagull's warning and the bird itself.
+   *
+   * The shadow has a hard edge and a flat fill on purpose. A soft, falling-off
+   * shadow is prettier and worse: a player under time pressure has to be able
+   * to tell exactly where it stops, and the only honest way to say that is a
+   * boundary rather than a gradient. This is the same lesson `driftMass` paid
+   * for once already.
+   */
+  seagullShadow: "#000000",
+  seagullEdge: "#e4e4e7",
+  seagull: "#fafafa",
+  seagullWing: "#a1a1aa",
+  seagullBeak: "#f59e0b",
+
   /** The crab, standing. */
   crab: "#f97316",
   /** The crab, mid-step and unable to do anything about it. */

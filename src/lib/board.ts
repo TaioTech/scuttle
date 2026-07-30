@@ -22,6 +22,9 @@ import {
   SURF_PERIOD_TICKS,
   SURF_ROW_LAG,
   TIDE_FULL_TICKS,
+  UMBRELLA_CHANCE,
+  UMBRELLA_PLANT_TICKS,
+  UMBRELLA_PLANTS,
   WRAP_MARGIN,
 } from "./constants";
 import { deriveRng, rangeFloat, rangeInt } from "./rng";
@@ -36,6 +39,22 @@ import { deriveRng, rangeFloat, rangeInt } from "./rng";
 export type Hazard = {
   center: number;
   halfWidth: number;
+  /**
+   * The run tick this hazard becomes lethal, or zero if it always was.
+   *
+   * An umbrella plants itself into a lane mid-run, which a towel never does.
+   * Rather than making the lane itself change shape over time, the hazard is
+   * generated once and simply is not lethal yet — so `laneAt` stays pure in the
+   * seed and the row for the whole dry sand, and only the *reading* of a hazard
+   * depends on when you ask.
+   *
+   * That is what keeps the crossability guarantee intact. The lane is laid out
+   * with every hazard present and every gap at its minimum; an umbrella that
+   * has not planted yet only ever makes the lane wider than the guarantee
+   * requires, so no seed and no moment can produce a lane that cannot be
+   * crossed.
+   */
+  plantsAt: number;
 };
 
 /** A lane with nothing in it. Somewhere to stand and think. */
@@ -204,6 +223,7 @@ export function laneAt(seed: number, row: number, elapsed = 0): Lane {
       count: rangeInt(rng, STILL_COUNT.min, STILL_COUNT.max),
       minWidth: STILL_WIDTH.min,
       maxWidth: lerp(STILL_WIDTH.min, STILL_WIDTH.max, strength),
+      plantable: true,
     });
     return { kind: "still", hazards, shell: placeShell(rng, hazards) };
   }
@@ -409,6 +429,8 @@ type Placement = {
   count: number;
   minWidth: number;
   maxWidth: number;
+  /** Whether one of these may turn out to be an umbrella that plants later. */
+  plantable?: boolean;
 };
 
 /**
@@ -447,11 +469,53 @@ function placeHazards(rng: () => number, spec: Placement): Hazard[] {
   let cursor = 0;
   for (let i = 0; i < spec.count; i += 1) {
     cursor += gaps[i];
-    hazards.push({ center: cursor + widths[i] / 2, halfWidth: widths[i] / 2 });
+    hazards.push({
+      center: cursor + widths[i] / 2,
+      halfWidth: widths[i] / 2,
+      plantsAt: 0,
+    });
     cursor += widths[i];
   }
 
+  // One of a still lane's blockers may turn out to be an umbrella, which is
+  // there from the start as far as the layout is concerned and only becomes
+  // lethal partway through the run. Chosen after the layout rather than during
+  // it, so the gap arithmetic never has to know this happened.
+  if (spec.plantable && hazards.length > 0 && rng() < UMBRELLA_CHANCE) {
+    const which = rangeInt(rng, 0, hazards.length - 1);
+    hazards[which] = {
+      ...hazards[which],
+      plantsAt: Math.round(
+        rangeFloat(rng, UMBRELLA_PLANTS.earliest, UMBRELLA_PLANTS.latest),
+      ),
+    };
+  }
+
   return hazards;
+}
+
+/** Whether a hazard is lethal yet, given how long the run has been going. */
+export function isPlanted(hazard: Hazard, elapsed: number): boolean {
+  return elapsed >= hazard.plantsAt;
+}
+
+/**
+ * How far through its arrival an umbrella is, from zero to one, or null if it
+ * is not currently arriving.
+ *
+ * The spec's obligation for this hazard: a thing that was not lethal a moment
+ * ago and now is needs a moment the player can see, rather than appearing
+ * between one frame and the next. This is that moment, and like every other
+ * animation in the game it is a function of the run's clock and nothing else.
+ */
+export function plantingProgress(
+  hazard: Hazard,
+  elapsed: number,
+): number | null {
+  if (hazard.plantsAt === 0) return null;
+  const since = elapsed - (hazard.plantsAt - UMBRELLA_PLANT_TICKS);
+  if (since < 0 || since >= UMBRELLA_PLANT_TICKS) return null;
+  return since / UMBRELLA_PLANT_TICKS;
 }
 
 /**

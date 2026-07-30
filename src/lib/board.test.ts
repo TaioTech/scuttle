@@ -5,8 +5,10 @@ import {
   hazardCenterAt,
   hazardStepPerTick,
   laneAt,
+  isPlanted,
   laneStrength,
   type Lane,
+  plantingProgress,
   minGapOf,
   shellCount,
   shellOf,
@@ -33,8 +35,11 @@ import {
   SURF_BREAK_TICKS,
   SURF_LANES,
   SURF_PERIOD_TICKS,
+  STEP_TICKS,
   SURF_ROW_LAG,
   TIDE_FULL_TICKS,
+  UMBRELLA_PLANTS,
+  UMBRELLA_PLANT_TICKS,
   WRAP_MARGIN,
 } from "./constants";
 import { seedForDay } from "./rng";
@@ -555,5 +560,90 @@ describe("shells", () => {
         );
       }
     }
+  });
+});
+
+describe("umbrellas", () => {
+  it("only ever plants in a still lane, never among the walkers", () => {
+    for (let day = 0; day < 300; day += 1) {
+      const seed = seedForDay(day);
+      for (let row = 1; row <= DRY_LANES; row += 1) {
+        const lane = laneAt(seed, row);
+        if (lane.kind !== "drift") continue;
+        for (const hazard of lane.hazards) expect(hazard.plantsAt).toBe(0);
+      }
+    }
+  });
+
+  it("leaves the lane's layout alone, planted or not", () => {
+    // The whole reason an umbrella is a flag on a hazard rather than a hazard
+    // that appears: the lane is laid out once, at full strength, and the gap
+    // arithmetic never learns that any of this happens.
+    for (let day = 0; day < 300; day += 1) {
+      const seed = seedForDay(day);
+      for (let row = 1; row <= DRY_LANES; row += 1) {
+        for (const gap of gapsOf(laneAt(seed, row))) {
+          expect(gap).toBeGreaterThanOrEqual(
+            minGapOf(laneAt(seed, row)) - 1e-9,
+          );
+        }
+      }
+    }
+  });
+
+  it("makes a lane strictly easier before it plants, never harder", () => {
+    // An unplanted umbrella occupies its slot in the layout and kills from
+    // nothing, so every lane is at its widest at the start of a run. No seed
+    // and no moment can produce a lane that cannot be crossed.
+    for (let day = 0; day < 300; day += 1) {
+      const seed = seedForDay(day);
+      for (let row = 1; row <= DRY_LANES; row += 1) {
+        const lane = laneAt(seed, row);
+        if (!hasHazards(lane)) continue;
+        const early = lane.hazards.filter((h) => isPlanted(h, 0)).length;
+        const late = lane.hazards.filter((h) =>
+          isPlanted(h, UMBRELLA_PLANTS.latest + 1),
+        ).length;
+        expect(early).toBeLessThanOrEqual(late);
+        expect(late).toBe(lane.hazards.length);
+      }
+    }
+  });
+
+  it("shows itself arriving before it can kill anybody", () => {
+    // A thing that was not lethal a moment ago and now is needs a moment the
+    // player can see, rather than appearing between one frame and the next.
+    const umbrella = { center: 50, halfWidth: 8, plantsAt: 1_000 };
+    expect(plantingProgress(umbrella, 1_000 - UMBRELLA_PLANT_TICKS)).toBe(0);
+    expect(plantingProgress(umbrella, 999)).toBeGreaterThan(0.9);
+    expect(plantingProgress(umbrella, 1_000)).toBeNull();
+
+    expect(isPlanted(umbrella, 999)).toBe(false);
+    expect(isPlanted(umbrella, 1_000)).toBe(true);
+  });
+
+  it("gives the arrival longer than a committed step", () => {
+    // A player already mid-step into the lane has to be able to land and get
+    // clear, since the step cannot be called off.
+    expect(UMBRELLA_PLANT_TICKS).toBeGreaterThan(STEP_TICKS);
+  });
+
+  it("never plants during the opening", () => {
+    const umbrellas: number[] = [];
+    for (let day = 0; day < 300; day += 1) {
+      const seed = seedForDay(day);
+      for (let row = 1; row <= DRY_LANES; row += 1) {
+        const lane = laneAt(seed, row);
+        if (!hasHazards(lane)) continue;
+        for (const hazard of lane.hazards) {
+          if (hazard.plantsAt > 0) umbrellas.push(hazard.plantsAt);
+        }
+      }
+    }
+    expect(umbrellas.length).toBeGreaterThan(0);
+    expect(Math.min(...umbrellas)).toBeGreaterThanOrEqual(
+      UMBRELLA_PLANTS.earliest,
+    );
+    expect(Math.max(...umbrellas)).toBeLessThanOrEqual(UMBRELLA_PLANTS.latest);
   });
 });

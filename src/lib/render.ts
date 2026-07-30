@@ -2,11 +2,16 @@ import {
   type Beach,
   hasHazards,
   hazardCenterAt,
+  isPlanted,
   type Lane,
+  plantingProgress,
   surfWashingAt,
 } from "./board";
+import type { Frisbee, Seagull } from "./roamers";
 import {
   BOARD_WIDTH,
+  FRISBEE_HALF,
+  SEAGULL_HALF_W,
   GAIT_FULL_SPEED,
   GAIT_SWING,
   GAIT_TICKS,
@@ -24,6 +29,24 @@ import {
 } from "./constants";
 import { PALETTE } from "./palette";
 import { isCarried, playerY, type SimState } from "./sim";
+
+/**
+ * How wide a claw is drawn, and how far past the shell its tip reaches, in
+ * board units.
+ *
+ * The overhang is the tuned number. At the original 2.6 the crab read some
+ * forty per cent wider than the box it dies at; at nothing it stopped looking
+ * like a crab. This is the middle, and it is a named constant because it is a
+ * feel number somebody will want to move again.
+ */
+const CLAW_WIDTH = 2.6;
+const CLAW_OVERHANG = 1.4;
+
+/** The roamers as one thing to hand the renderer. */
+export type Roamers = {
+  frisbee: Frisbee | null;
+  seagull: Seagull | null;
+};
 
 /**
  * Where the board sits inside the canvas, in CSS pixels.
@@ -71,6 +94,8 @@ export function drawFrame(
   alpha: number,
   /** The canvas's size in CSS pixels, the context already scaled to match. */
   size: { width: number; height: number },
+  /** The hazards that belong to no lane. Null on a board that has none. */
+  roamers: Roamers | null = null,
 ): void {
   const crabX = lerp(previous.x, current.x, alpha);
   const crabY = lerp(playerY(previous), playerY(current), alpha);
@@ -160,14 +185,43 @@ export function drawFrame(
     }
 
     for (const hazard of lane.hazards) {
+      const planting = plantingProgress(hazard, elapsed);
+      // An umbrella that has neither planted nor begun arriving is not on the
+      // beach yet, and drawing it early would be the art claiming a hazard the
+      // collision does not have.
+      if (!isPlanted(hazard, elapsed) && planting === null) continue;
+
       const center = hazardCenterAt(lane, hazard, tick);
       ctx.save();
       ctx.translate(toScreenX(center), middle);
       if (lane.kind === "drift") {
         drawWalkers(ctx, hazard.halfWidth, view.scale, tick);
+      } else if (hazard.plantsAt > 0) {
+        drawUmbrella(ctx, hazard.halfWidth, view.scale, planting);
       } else {
         drawTowel(ctx, hazard.halfWidth, view.scale);
       }
+      ctx.restore();
+    }
+  }
+
+  // The second pass. Everything that is not lane-bound is drawn here, in board
+  // coordinates, after every lane and before the crab — so a frisbee is
+  // honestly half in one lane and half in the next instead of being clipped
+  // into whichever row happened to draw it, and so the player never loses
+  // themselves under something in the air.
+  if (roamers !== null) {
+    if (roamers.seagull !== null) {
+      ctx.save();
+      ctx.translate(toScreenX(roamers.seagull.x), toScreenY(roamers.seagull.y));
+      drawSeagull(ctx, view.scale, roamers.seagull);
+      ctx.restore();
+    }
+
+    if (roamers.frisbee !== null) {
+      ctx.save();
+      ctx.translate(toScreenX(roamers.frisbee.x), toScreenY(roamers.frisbee.y));
+      drawFrisbee(ctx, view.scale, roamers.frisbee);
       ctx.restore();
     }
   }
@@ -308,6 +362,23 @@ function drawCrab(
 ): void {
   const halfWidth = PLAYER_HALF_W * scale * (stepping ? 1.08 : 1);
   const halfHeight = PLAYER_HALF_H * scale * (stepping ? 0.86 : 1);
+  // The shell fills the box and the claws straddle its edge, overhanging by a
+  // little rather than by a lot.
+  //
+  // Two wrong answers came first. Claws held well outboard — the original —
+  // made the crab read some forty per cent wider than the width it dies at, so
+  // every gap looked tighter than it was. Claws tucked wholly inside were
+  // honest and turned the crab into a rounded rectangle, which is worse in the
+  // way that actually matters: the pincers either side are most of what makes
+  // it a crab rather than a token, and a game about a crab should look like it
+  // has one.
+  //
+  // Straddling costs a fraction of a body width of overhang and buys the whole
+  // silhouette back. Art wider than the box is the milder half of the fault art
+  // narrower than it commits — one kills you from daylight you could see, the
+  // other hides a little room you were owed — and at this size the second is
+  // worth a claw.
+  const shellHalf = halfWidth;
   // A crab in the water's hands is drawn cool rather than orange, and it wins
   // over the mid-step colour because being unkillable is the more important of
   // the two things true of it. The immunity outlasts the ride by design, so the
@@ -340,25 +411,55 @@ function drawCrab(
   ctx.strokeStyle = limb;
   ctx.lineWidth = Math.max(1, 0.7 * scale);
   for (let leg = 0; leg < 3; leg += 1) {
-    const alongBody = (leg - 1) * halfWidth * 0.46;
+    const alongBody = (leg - 1) * shellHalf * 0.52;
     const lift = Math.sin(phase + leg * 1.7) * swing;
     for (const side of [-1, 1]) {
       ctx.beginPath();
       ctx.moveTo(alongBody, halfHeight * 0.2);
       ctx.lineTo(
-        alongBody + side * halfWidth * 0.5,
+        alongBody + side * shellHalf * 0.55,
         halfHeight + Math.abs(lift) * 0.6 + halfHeight * 0.35,
       );
       ctx.stroke();
     }
   }
 
+  // Claws, held out to either side and bobbing against the gait, drawn before
+  // the shell so it covers their inner half and only the pincer shows.
+  //
+  // This is the original treatment, brought back after two attempts at
+  // something cleverer. Tucking the claws wholly inside the box turned the crab
+  // into a rounded rectangle, and redrawing them as jointed pincers read as
+  // chicken feet at the forty-odd pixels a crab actually occupies on a phone.
+  // The blunt version was right: at this size the claws are a silhouette, not
+  // an anatomy lesson, and two blocks either side of a wide body is what says
+  // crab.
+  //
+  // What was wrong was only how far they reached. They stood a full two and a
+  // half units proud of the collision box, which made the crab read some forty
+  // per cent wider than the width it dies at, so every gap looked tighter than
+  // it was. They now sit deeper into the shell and protrude a little over half
+  // as far, which keeps the shape and returns most of the honesty.
+  ctx.fillStyle = limb;
+  for (const side of [-1, 1]) {
+    const bob = Math.sin(phase + (side > 0 ? Math.PI : 0)) * swing * 0.4;
+    const outer = shellHalf + CLAW_OVERHANG * scale;
+    roundedRect(
+      ctx,
+      side > 0 ? outer - CLAW_WIDTH * scale : -outer,
+      -halfHeight * 0.5 + bob,
+      CLAW_WIDTH * scale,
+      2.2 * scale,
+      1 * scale,
+    );
+  }
+
   ctx.fillStyle = shell;
   roundedRect(
     ctx,
-    -halfWidth,
+    -shellHalf,
     -halfHeight,
-    halfWidth * 2,
+    shellHalf * 2,
     halfHeight * 2,
     Math.min(6, 3 * scale),
   );
@@ -367,49 +468,28 @@ function drawCrab(
   ctx.fillStyle = lit;
   roundedRect(
     ctx,
-    -halfWidth * 0.72,
+    -shellHalf * 0.72,
     -halfHeight * 0.78,
-    halfWidth * 1.44,
+    shellHalf * 1.44,
     halfHeight * 0.66,
     Math.min(4, 2 * scale),
   );
-
-  // Claws, drawn over the shell at its outer edges rather than reaching past
-  // them. Held outboard they were solid mass sitting outside the collision box,
-  // which made the crab read some forty per cent wider than the width it
-  // actually dies at — so every gap looked tighter than it was and the player
-  // hunted for room the lane already had. Art wider than the box is the milder
-  // half of the same fault as art narrower than it: one kills you from daylight
-  // you could see, the other hides room you were entitled to.
-  const clawWidth = 2.6 * scale;
-  ctx.fillStyle = limb;
-  for (const side of [-1, 1]) {
-    const bob = Math.sin(phase + (side > 0 ? Math.PI : 0)) * swing * 0.4;
-    roundedRect(
-      ctx,
-      side > 0 ? halfWidth - clawWidth : -halfWidth,
-      -halfHeight * 0.5 + bob,
-      clawWidth,
-      2.2 * scale,
-      1 * scale,
-    );
-  }
 
   // Eyestalks, rising just clear of the shell.
   ctx.strokeStyle = limb;
   ctx.lineWidth = Math.max(1, 0.5 * scale);
   for (const side of [-1, 1]) {
     ctx.beginPath();
-    ctx.moveTo(side * halfWidth * 0.42, -halfHeight * 0.4);
-    ctx.lineTo(side * halfWidth * 0.42, -halfHeight - 1.4 * scale);
+    ctx.moveTo(side * shellHalf * 0.45, -halfHeight * 0.4);
+    ctx.lineTo(side * shellHalf * 0.45, -halfHeight - 1.4 * scale);
     ctx.stroke();
   }
 
   const eye = Math.max(1, 0.9 * scale);
   ctx.fillStyle = PALETTE.background;
   ctx.beginPath();
-  ctx.arc(-halfWidth * 0.42, -halfHeight - 1.4 * scale, eye, 0, Math.PI * 2);
-  ctx.arc(halfWidth * 0.42, -halfHeight - 1.4 * scale, eye, 0, Math.PI * 2);
+  ctx.arc(-shellHalf * 0.45, -halfHeight - 1.4 * scale, eye, 0, Math.PI * 2);
+  ctx.arc(shellHalf * 0.45, -halfHeight - 1.4 * scale, eye, 0, Math.PI * 2);
   ctx.fill();
 }
 
@@ -511,14 +591,43 @@ function drawTowel(
     ctx.fillRect(left + i * gap + gap * 0.25, -half, gap * 0.28, half * 2);
   }
 
-  // The sunbather: a torso and a head, lying along the towel.
+  // The sunbather, lying along the towel with their head at one end.
+  //
+  // Previously a wide ellipse with a circle overlapping its edge, which at the
+  // size a hazard is actually drawn on a phone read as one body with a bulge —
+  // closer to a fish than a person. What was missing was not detail but joints:
+  // a neck's worth of gap between head and torso, a narrower waist than
+  // shoulders, and legs that end somewhere. Three separated parts read as a
+  // figure at sizes where one continuous blob never will.
   ctx.fillStyle = PALETTE.stillBody;
+
+  const headAt = -width * 0.32;
   ctx.beginPath();
-  ctx.ellipse(0, half * 0.05, width * 0.24, half * 0.46, 0, 0, Math.PI * 2);
+  ctx.arc(headAt, half * 0.02, half * 0.27, 0, Math.PI * 2);
   ctx.fill();
+
+  // Torso: shoulders at the head end tapering to a waist, so there is a
+  // direction to the body rather than a symmetrical lump.
   ctx.beginPath();
-  ctx.arc(-width * 0.3, half * 0.05, half * 0.3, 0, Math.PI * 2);
+  ctx.moveTo(headAt + half * 0.42, -half * 0.42);
+  ctx.lineTo(width * 0.08, -half * 0.26);
+  ctx.lineTo(width * 0.08, half * 0.3);
+  ctx.lineTo(headAt + half * 0.42, half * 0.46);
+  ctx.closePath();
   ctx.fill();
+
+  // Legs, drawn as two strokes with daylight between them — the one place on
+  // this hazard where a gap is safe to imply, because the towel beneath is
+  // already stating the box and the legs are inside it.
+  ctx.strokeStyle = PALETTE.stillBody;
+  ctx.lineWidth = Math.max(1, 0.9 * scale);
+  ctx.lineCap = "round";
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(width * 0.08, side * half * 0.16);
+    ctx.lineTo(width * 0.36, side * half * 0.3);
+    ctx.stroke();
+  }
 
   ctx.restore();
 }
@@ -539,3 +648,177 @@ function roundedRect(
 function lerp(from: number, to: number, alpha: number): number {
   return from + (to - from) * alpha;
 }
+
+/**
+ * An umbrella, planted or arriving.
+ *
+ * Fills its collision box exactly once planted, the same obligation every other
+ * hazard has. While it is arriving the canopy descends from above the lane and
+ * the pole grows to meet it, so the moment reads as something being put there
+ * rather than something appearing — which is the whole reason this hazard is
+ * drawn differently from a towel at all.
+ *
+ * `planting` is null once it is simply a blocker, and every frame of the
+ * arrival comes from the run's clock rather than a counter of the renderer's.
+ */
+function drawUmbrella(
+  ctx: CanvasRenderingContext2D,
+  halfWidth: number,
+  scale: number,
+  planting: number | null,
+): void {
+  const width = halfWidth * scale;
+  const height = HAZARD_HALF_H * scale;
+  // Arriving, it comes down from above and settles. Fully planted it sits still.
+  const drop = planting === null ? 0 : (1 - planting) * height * 4;
+
+  ctx.save();
+  ctx.translate(0, -drop);
+
+  ctx.fillStyle = PALETTE.umbrellaPole;
+  ctx.fillRect(-0.5 * scale, -height * 0.2, Math.max(1, scale), height * 1.2 + drop);
+
+  // The canopy spans the whole box. An umbrella narrower than what it kills
+  // from would show daylight the player would try to walk through.
+  ctx.fillStyle = PALETTE.umbrella;
+  ctx.beginPath();
+  ctx.moveTo(-width, -height * 0.1);
+  ctx.quadraticCurveTo(0, -height * 1.9, width, -height * 0.1);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = PALETTE.umbrellaShade;
+  ctx.beginPath();
+  ctx.moveTo(-width, -height * 0.1);
+  ctx.quadraticCurveTo(-width * 0.5, -height * 0.55, 0, -height * 0.1);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(width * 0.5, -height * 0.1);
+  ctx.quadraticCurveTo(width * 0.75, -height * 0.5, width, -height * 0.1);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
+}
+
+/**
+ * A frisbee, plus the mark on the sand directly under it.
+ *
+ * The disc is drawn at the box's full extent and the mark repeats it, because
+ * the thing is airborne and a player judging whether they can pass beneath it
+ * has nothing else to measure against. Its spin comes from its flight progress
+ * — a closed form of the run's clock — so two devices at the same tick draw the
+ * same disc at the same angle.
+ */
+function drawFrisbee(
+  ctx: CanvasRenderingContext2D,
+  scale: number,
+  frisbee: Frisbee,
+): void {
+  const width = FRISBEE_HALF.width * scale;
+  const height = FRISBEE_HALF.height * scale;
+
+  // The disc rolls as it flies; the squash is the spin seen edge-on.
+  const spin = Math.abs(Math.cos(frisbee.progress * Math.PI * 9));
+
+  ctx.fillStyle = PALETTE.frisbee;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, width, Math.max(height * 0.3, height * spin), 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = PALETTE.frisbeeRim;
+  ctx.lineWidth = Math.max(1, 0.5 * scale);
+  ctx.beginPath();
+  ctx.ellipse(
+    0,
+    0,
+    width * 0.6,
+    Math.max(height * 0.18, height * spin * 0.6),
+    0,
+    0,
+    Math.PI * 2,
+  );
+  ctx.stroke();
+
+  // The honest box, stated plainly around the disc. Without it the squash of
+  // the spin makes the thing look thinner than it kills from, twice a cycle.
+  ctx.strokeStyle = PALETTE.frisbee;
+  ctx.lineWidth = Math.max(1, 0.4 * scale);
+  ctx.globalAlpha = 0.45;
+  ctx.strokeRect(-width, -height, width * 2, height * 2);
+  ctx.globalAlpha = 1;
+}
+
+/**
+ * The seagull: a hard-edged patch of shadow, then the bird in it.
+ *
+ * The shadow is a flat fill with a drawn boundary rather than a soft gradient.
+ * A falling-off shadow is prettier and is a worse warning — under time pressure
+ * the player has to be able to tell exactly where it stops, and only an edge
+ * says that. The patch grows to the full extent of the box it will kill from
+ * and no further, so what is being threatened is never in question.
+ *
+ * The patch is harmless for every tick of the warning. It kills only once the
+ * bird is down, which is the whole point of the lead time.
+ */
+function drawSeagull(
+  ctx: CanvasRenderingContext2D,
+  scale: number,
+  seagull: Seagull,
+): void {
+  const width = SEAGULL_HALF_W * scale;
+  const height = (LANE_HEIGHT / 2) * scale;
+
+  // Grows to the true box over the warning and then holds there. It never
+  // overshoots: a shadow larger than the strike would be a lie in the safe
+  // direction, which still teaches the player a distance that is not real.
+  const reach = 0.35 + 0.65 * seagull.warning;
+
+  ctx.globalAlpha = 0.34 + 0.4 * seagull.warning;
+  ctx.fillStyle = PALETTE.seagullShadow;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, width * reach, height * reach, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  ctx.strokeStyle = PALETTE.seagullEdge;
+  ctx.lineWidth = Math.max(1, 0.4 * scale);
+  ctx.globalAlpha = 0.55 + 0.45 * seagull.warning;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, width * reach, height * reach, 0, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  if (!seagull.striking) return;
+
+  // The bird itself, only once it is actually down and actually lethal.
+  ctx.fillStyle = PALETTE.seagull;
+  ctx.beginPath();
+  ctx.ellipse(0, 0, width * 0.5, height * 0.52, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = PALETTE.seagullWing;
+  ctx.lineWidth = Math.max(1, 0.7 * scale);
+  ctx.lineCap = "round";
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(side * width * 0.2, -height * 0.1);
+    ctx.quadraticCurveTo(
+      side * width * 0.75,
+      -height * 0.7,
+      side * width * 0.98,
+      -height * 0.1,
+    );
+    ctx.stroke();
+  }
+
+  ctx.fillStyle = PALETTE.seagullBeak;
+  ctx.beginPath();
+  ctx.moveTo(0, height * 0.15);
+  ctx.lineTo(-width * 0.1, height * 0.55);
+  ctx.lineTo(width * 0.1, height * 0.55);
+  ctx.closePath();
+  ctx.fill();
+}
+

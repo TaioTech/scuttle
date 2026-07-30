@@ -22,6 +22,7 @@ import {
   createSim,
   formatElapsed,
   type Input,
+  roamersOf,
   shellsTaken,
   stepSim,
 } from "@/lib/sim";
@@ -123,7 +124,8 @@ export default function Game() {
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
 
-    const beach = beachFor(seedForDay(day));
+    const seed = seedForDay(day);
+    const beach = beachFor(seed);
     let previous = createSim();
     let current = previous;
     let pending = 0;
@@ -142,6 +144,7 @@ export default function Game() {
         current,
         current.alive ? pending / TICK_MS : 1,
         size,
+        roamersOf(current, seed),
       );
     };
 
@@ -176,7 +179,7 @@ export default function Game() {
         };
         tapped.current = false;
         previous = current;
-        current = stepSim(current, input, beach);
+        current = stepSim(current, input, beach, seed);
         // The instant the step begins, not when the button was pressed: the
         // press might have been buffered, and what the player is being told is
         // that control has just left them.
