@@ -139,6 +139,13 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   same reason: a player who dies at lane four and wins on the next go has still
   reached the sea today.
 - A live shell count in the header, next to the day.
+- The build's commit stamped into the corner of the page. A preview URL, a
+  production domain and a dev server all look identical, so "it still looks like
+  the old version" is indistinguishable from a stale cache, a protected preview,
+  or a branch that was never merged. Vercel's commit variable is used where it
+  exists and `git` answers locally; if both fail the build still succeeds with
+  `dev`, because a missing stamp must never be the reason a deploy does not go
+  out.
 - The umbrella, which plants itself into a still lane partway through a run and
   is visibly arriving before it is lethal. It is a flag on a hazard rather than
   a hazard that appears, which is what keeps the crossability guarantee intact:
