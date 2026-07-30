@@ -15,6 +15,7 @@ import {
   LANES_BEHIND,
   PLAYER_HALF_H,
   PLAYER_HALF_W,
+  SHELL_HALF_W,
   TICK_HZ,
   TOWEL_STRIPE_SPACING,
   VISIBLE_LANES,
@@ -83,6 +84,7 @@ export function drawFrame(
   // ahead of it to read, and the camera stops at the promenade rather than
   // panning off the bottom of the world.
   const cameraRow = Math.max(0, crabY / LANE_HEIGHT - 0.5 - LANES_BEHIND);
+  const taken = current.shells;
 
   ctx.fillStyle = PALETTE.background;
   ctx.fillRect(0, 0, size.width, size.height);
@@ -145,6 +147,18 @@ export function drawFrame(
     if (!hasHazards(lane)) continue;
 
     const middle = toScreenY((row + 0.5) * LANE_HEIGHT);
+
+    // Under the hazards, because a shell lies on the sand and the crowd walks
+    // over it. Drawing it on top would let a shell imply a gap that is not
+    // there, which is the same fault as art narrower than its box.
+    const shell = lane.shell;
+    if (shell !== null && (taken & (1 << row)) === 0) {
+      ctx.save();
+      ctx.translate(toScreenX(shell), middle);
+      drawShell(ctx, view.scale, tick, row);
+      ctx.restore();
+    }
+
     for (const hazard of lane.hazards) {
       const center = hazardCenterAt(lane, hazard, tick);
       ctx.save();
@@ -175,6 +189,46 @@ export function drawFrame(
   ctx.restore();
 
   ctx.restore();
+}
+
+/**
+ * A scallop shell, drawn about its centre: a fan with ridges and a hinge.
+ *
+ * It breathes a little, and the phase comes from the tick and the row so that
+ * two shells on the same beach are not pulsing in unison. Like every other
+ * animation here it holds no counter of its own — the row is what varies it,
+ * and the row is a constant.
+ *
+ * Kept well inside the width a pickup is granted at. This is the one thing on
+ * the beach where art wider than its box would be a kindness rather than a
+ * cheat, and it still is not worth doing: a shell that looks bigger than its
+ * reach teaches the player a distance that will not work on the next one.
+ */
+function drawShell(
+  ctx: CanvasRenderingContext2D,
+  scale: number,
+  tick: number,
+  row: number,
+): void {
+  const breath = 1 + Math.sin(tick / 40 + row * 1.9) * 0.06;
+  const radius = SHELL_HALF_W * scale * breath;
+
+  ctx.fillStyle = PALETTE.shell;
+  ctx.beginPath();
+  ctx.moveTo(0, radius * 0.75);
+  ctx.arc(0, radius * 0.75, radius, Math.PI, 0);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = PALETTE.shellRidge;
+  ctx.lineWidth = Math.max(1, 0.32 * scale);
+  ctx.lineCap = "round";
+  for (const spread of [-0.62, 0, 0.62]) {
+    ctx.beginPath();
+    ctx.moveTo(0, radius * 0.7);
+    ctx.lineTo(spread * radius * 1.05, radius * 0.75 - radius * 0.82);
+    ctx.stroke();
+  }
 }
 
 /** The colour of a lane's floor, before anything standing on it is drawn. */

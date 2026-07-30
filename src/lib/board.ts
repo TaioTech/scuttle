@@ -8,11 +8,15 @@ import {
   DRY_LANES,
   DT,
   MIN_GAP,
+  PLAYER_HALF_W,
   RAMP_LANES,
   SAFE_LANE_INTERVAL,
   STILL_COUNT,
   STILL_LANE_CHANCE,
   STILL_WIDTH,
+  SHELL_CHANCE,
+  SHELL_GAP_BIAS,
+  SHELL_HALF_W,
   SURF_BREAK_TICKS,
   SURF_LANES,
   SURF_PERIOD_TICKS,
@@ -60,8 +64,19 @@ export type TideLine = { kind: "tideline" };
  */
 export type SurfLane = { kind: "surf" };
 
+/**
+ * Where a lane's shell sits, in board units from the left edge, or `null`.
+ *
+ * Board space rather than the lane's own space, even for a drifting lane: a
+ * shell is a thing lying on the sand and the crowd walks over it. That is also
+ * what makes a drifting lane's shell reachable by construction — every point on
+ * the board is under a gap at some phase of the cycle, so waiting is always an
+ * option and the only question is whether it is worth the time.
+ */
+export type ShellAt = number | null;
+
 /** Towels and sunbathers: dry sand that simply is not available. */
-export type StillLane = { kind: "still"; hazards: Hazard[] };
+export type StillLane = { kind: "still"; hazards: Hazard[]; shell: ShellAt };
 
 /** Beachgoers walking the sand, wrapping around off-board and coming back. */
 export type DriftLane = {
@@ -70,6 +85,7 @@ export type DriftLane = {
   /** Board units per second. */
   speed: number;
   hazards: Hazard[];
+  shell: ShellAt;
 };
 
 /**
@@ -181,18 +197,29 @@ export function laneAt(seed: number, row: number, elapsed = 0): Lane {
   const strength = laneStrength(row);
 
   if (rng() < STILL_LANE_CHANCE) {
-    return {
-      kind: "still",
-      hazards: placeHazards(rng, {
-        span: BOARD_WIDTH,
-        cyclic: false,
-        minGap: MIN_GAP.still,
-        count: rangeInt(rng, STILL_COUNT.min, STILL_COUNT.max),
-        minWidth: STILL_WIDTH.min,
-        maxWidth: lerp(STILL_WIDTH.min, STILL_WIDTH.max, strength),
-      }),
-    };
+    const hazards = placeHazards(rng, {
+      span: BOARD_WIDTH,
+      cyclic: false,
+      minGap: MIN_GAP.still,
+      count: rangeInt(rng, STILL_COUNT.min, STILL_COUNT.max),
+      minWidth: STILL_WIDTH.min,
+      maxWidth: lerp(STILL_WIDTH.min, STILL_WIDTH.max, strength),
+    });
+    return { kind: "still", hazards, shell: placeShell(rng, hazards) };
   }
+
+  const hazards = placeHazards(rng, {
+    span: CYCLE_SPAN,
+    cyclic: true,
+    minGap: MIN_GAP.drift,
+    count: rangeInt(
+      rng,
+      DRIFT_COUNT.min,
+      Math.round(lerp(DRIFT_COUNT.min, DRIFT_COUNT.max, strength)),
+    ),
+    minWidth: DRIFT_WIDTH.min,
+    maxWidth: lerp(DRIFT_WIDTH.min, DRIFT_WIDTH.max, strength),
+  });
 
   return {
     kind: "drift",
@@ -202,19 +229,77 @@ export function laneAt(seed: number, row: number, elapsed = 0): Lane {
       DRIFT_SPEED.min,
       lerp(DRIFT_SPEED.min, DRIFT_SPEED.max, strength),
     ),
-    hazards: placeHazards(rng, {
-      span: CYCLE_SPAN,
-      cyclic: true,
-      minGap: MIN_GAP.drift,
-      count: rangeInt(
-        rng,
-        DRIFT_COUNT.min,
-        Math.round(lerp(DRIFT_COUNT.min, DRIFT_COUNT.max, strength)),
-      ),
-      minWidth: DRIFT_WIDTH.min,
-      maxWidth: lerp(DRIFT_WIDTH.min, DRIFT_WIDTH.max, strength),
-    }),
+    hazards,
+    shell: placeShell(rng, null),
   };
+}
+
+/**
+ * Where a lane's shell lies, or `null` if it has none.
+ *
+ * Two cases, and the difference is what makes the reachability guarantee
+ * structural rather than something to be checked afterwards.
+ *
+ * A drifting lane's hazards sweep the whole board, so every point on it is
+ * under a gap at some phase of the cycle. Any position is reachable; the shell
+ * only has to be somewhere the crab can physically stand, which means clear of
+ * the walls. Pass `null` for the hazards and it lands anywhere on the board.
+ *
+ * A still lane's hazards never move, so a shell has to be placed relative to
+ * them or it is simply buried. It goes inside one of the lane's gaps, offset
+ * from that gap's centre by a fraction of the room actually available — a
+ * fraction rather than a distance, so the offset cannot push it into a hazard
+ * however narrow the gap. Dead centre would put the shell exactly where a
+ * player crossing that gap already stands, and a pickup that costs nothing is
+ * not the optional risk the spec asks for.
+ */
+function placeShell(rng: () => number, hazards: Hazard[] | null): ShellAt {
+  if (rng() >= SHELL_CHANCE) return null;
+
+  const lowest = PLAYER_HALF_W;
+  const highest = BOARD_WIDTH - PLAYER_HALF_W;
+
+  if (hazards === null) return rangeFloat(rng, lowest, highest);
+
+  // The open runs between this lane's hazards, in board space, including the
+  // stretches against each wall.
+  const edges = [...hazards].sort((a, b) => a.center - b.center);
+  const runs: { from: number; to: number }[] = [];
+  let cursor = 0;
+  for (const hazard of edges) {
+    runs.push({ from: cursor, to: hazard.center - hazard.halfWidth });
+    cursor = hazard.center + hazard.halfWidth;
+  }
+  runs.push({ from: cursor, to: BOARD_WIDTH });
+
+  const usable = runs
+    .map((run) => ({
+      from: Math.max(run.from + SHELL_HALF_W, lowest),
+      to: Math.min(run.to - SHELL_HALF_W, highest),
+    }))
+    .filter((run) => run.to > run.from);
+
+  if (usable.length === 0) return null;
+
+  const run = usable[rangeInt(rng, 0, usable.length - 1)];
+  const middle = (run.from + run.to) / 2;
+  const room = (run.to - run.from) / 2;
+  const side = rng() < 0.5 ? -1 : 1;
+  return middle + side * room * SHELL_GAP_BIAS;
+}
+
+/** How many shells the day's beach has in it, all told. */
+export function shellCount(seed: number): number {
+  let total = 0;
+  for (let row = 1; row <= DRY_LANES; row += 1) {
+    if (shellOf(laneAt(seed, row)) !== null) total += 1;
+  }
+  return total;
+}
+
+/** A lane's shell, or `null` for a lane that has no room for one. */
+export function shellOf(lane: Lane): ShellAt {
+  return hasHazards(lane) ? lane.shell : null;
 }
 
 /**

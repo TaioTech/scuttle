@@ -108,6 +108,20 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   that does the pushing. A carried crab is immune for the whole ride and a beat
   past it, and is drawn pale so the immunity is a rule the player can see rather
   than one they infer from surviving something that looked fatal.
+- Shells: seeded, optional pickups lying in the lanes worth avoiding, counted
+  separately from the time rather than converted into it. The reachability
+  guarantee AC #6 asks for is structural, like the crossability one. A drifting
+  lane's hazards sweep the whole board, so every point on it is under a gap at
+  some phase and any position is reachable; a still lane's never move, so its
+  shell is placed inside one of the lane's actual gaps, offset from that gap's
+  centre by a *fraction of the room available* rather than a fixed distance —
+  which is what makes it impossible for the offset to bury the shell however
+  narrow the gap. Dead centre would put a shell exactly where a player crossing
+  that gap already stands, and a pickup costing nothing is not an optional risk.
+  Drawn pink: outside the muted family every hazard uses, and not the crab's
+  orange, so a glance can never confuse the two. Collected shells are a bitmask
+  per row rather than a running total, because a wave can carry the crab back
+  over ground it has already taken and a shell must not be worth two.
 - `hasHazards`, asked instead of enumerating the lane kinds that have none. The
   beach went from three kinds to six in one change and every site that had
   spelled out the empty ones was a site that would have silently begun treating

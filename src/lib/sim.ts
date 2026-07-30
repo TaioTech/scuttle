@@ -7,6 +7,7 @@ import {
   LATERAL_SPEED,
   PLAYER_HALF_H,
   PLAYER_HALF_W,
+  SHELL_HALF_W,
   STEP_BUFFER_TICKS,
   STEP_TICKS,
   SURF_GRACE_TICKS,
@@ -19,6 +20,7 @@ import {
   hazardCenterAt,
   hazardStepPerTick,
   type Lane,
+  shellOf,
   type StillLane,
   surfWashingAt,
 } from "./board";
@@ -100,7 +102,28 @@ export type SimState = {
    * instead of dying to a move it never made.
    */
   immune: number;
+  /**
+   * Which rows' shells have been picked up, one bit per row.
+   *
+   * A bitmask rather than a set or a list because the state is copied on every
+   * one of sixty ticks a second and compared wholesale in the tests: a number
+   * copies for nothing and cannot be accidentally shared between two states the
+   * way a mutable collection can. Shells only ever lie in the dry sand, which
+   * is well inside the bits a small integer has to offer.
+   *
+   * It has to be remembered per row rather than merely counted, because a wave
+   * can carry the crab back over ground it has already taken and a shell must
+   * not be worth two.
+   */
+  shells: number;
 };
+
+/** How many shells have been picked up. */
+export function shellsTaken(state: SimState): number {
+  let count = 0;
+  for (let bits = state.shells; bits !== 0; bits >>>= 1) count += bits & 1;
+  return count;
+}
 
 /**
  * Whether a wave is carrying the crab right now.
@@ -128,6 +151,7 @@ export function createSim(): SimState {
     started: false,
     elapsed: 0,
     immune: 0,
+    shells: 0,
   };
 }
 
@@ -185,12 +209,14 @@ export function stepSim(
   if (step) {
     if (pressed) buffer = STEP_BUFFER_TICKS;
 
-    const elapsed = step.elapsed + 1;
-    if (elapsed >= STEP_TICKS) {
+    // Named for the step rather than for the run: `elapsed` above is the run's
+    // clock and the two mean entirely different things.
+    const stepElapsed = step.elapsed + 1;
+    if (stepElapsed >= STEP_TICKS) {
       row = step.to;
       step = null;
     } else {
-      step = { ...step, elapsed };
+      step = { ...step, elapsed: stepElapsed };
     }
   } else {
     const direction = (input.right ? 1 : 0) - (input.left ? 1 : 0);
@@ -244,8 +270,40 @@ export function stepSim(
   };
 
   next.alive = immune > 0 || !struck(next, at, fromX, fromY);
+  next.shells = gathered(next, at, fromY);
 
   return next;
+}
+
+/**
+ * The shell mask after whatever the crab passed over this tick.
+ *
+ * Swept across the same rows a collision is, so a shell can be taken in
+ * passing during a step rather than only by standing on it. Being generous
+ * here is the right way round to be wrong: a pickup that was missed is a
+ * frustration, and a pickup that was not earned costs nothing but a point on
+ * an optional axis.
+ */
+function gathered(
+  state: SimState,
+  at: (row: number) => Lane,
+  fromY: number,
+): number {
+  const toY = playerY(state);
+  const lowest = Math.floor((Math.min(fromY, toY) - PLAYER_HALF_H) / LANE_HEIGHT);
+  const highest = Math.floor((Math.max(fromY, toY) + PLAYER_HALF_H) / LANE_HEIGHT);
+
+  let shells = state.shells;
+  for (let row = Math.max(0, lowest); row <= highest; row += 1) {
+    const bit = 1 << row;
+    if ((shells & bit) !== 0) continue;
+    const shell = shellOf(at(row));
+    if (shell === null) continue;
+    if (Math.abs(state.x - shell) <= PLAYER_HALF_W + SHELL_HALF_W) {
+      shells |= bit;
+    }
+  }
+  return shells;
 }
 
 /**

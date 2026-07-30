@@ -256,6 +256,32 @@ export const STILL_COUNT = { min: 2, max: 2 } as const;
 export const STILL_LANE_CHANCE = 0.3;
 
 /**
+ * Proportion of hazard lanes that hide a shell.
+ *
+ * Around seven on a beach, which is enough that a collected count is a real
+ * second axis and few enough that each one is a decision rather than a chore.
+ */
+export const SHELL_CHANCE = 0.4;
+
+/** Half the width of a shell, in board units. */
+export const SHELL_HALF_W = 3;
+
+/**
+ * How far a shell sits from the centre of its gap, as a fraction of the room
+ * either side of it.
+ *
+ * Zero would put every shell dead centre, which is exactly where a player
+ * crossing the gap already is — the pickup would be free and therefore not a
+ * decision. Offsetting it toward one edge means taking it costs a moment of
+ * lining up against a hazard's edge, which is the risk the shell is meant to
+ * be paid for with.
+ *
+ * It stays a fraction of the *available* room rather than a fixed distance, so
+ * the offset can never push a shell into a hazard however narrow its gap is.
+ */
+export const SHELL_GAP_BIAS = 0.55;
+
+/**
  * Ticks in one full stride of the crab's legs.
  *
  * Animation phase is derived from the tick and nothing else — never from a

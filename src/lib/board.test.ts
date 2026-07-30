@@ -8,6 +8,8 @@ import {
   laneStrength,
   type Lane,
   minGapOf,
+  shellCount,
+  shellOf,
   surfWashingAt,
   tideAt,
   waterlineAt,
@@ -26,6 +28,7 @@ import {
   RAMP_LANES,
   SAFE_LANE_INTERVAL,
   SEA_ROW,
+  SHELL_HALF_W,
   STILL_WIDTH,
   SURF_BREAK_TICKS,
   SURF_LANES,
@@ -443,6 +446,114 @@ describe("hazardStepPerTick", () => {
     for (const lane of beach()) {
       if (lane.kind !== "drift") continue;
       expect(Math.abs(hazardStepPerTick(lane))).toBeLessThan(1);
+    }
+  });
+});
+
+describe("shells", () => {
+  it("puts them only in lanes that carry a hazard", () => {
+    for (let day = 0; day < 200; day += 1) {
+      const seed = seedForDay(day);
+      for (let row = 0; row <= BEACH_LANES; row += 1) {
+        const lane = laneAt(seed, row);
+        if (!hasHazards(lane)) expect(shellOf(lane)).toBeNull();
+      }
+    }
+  });
+
+  it("gives a beach a handful of them, and never none", () => {
+    for (let day = 0; day < 200; day += 1) {
+      const total = shellCount(seedForDay(day));
+      expect(total).toBeGreaterThan(0);
+      expect(total).toBeLessThanOrEqual(DRY_LANES);
+    }
+  });
+
+  it("keeps every shell inside the board and reachable by a crab", () => {
+    for (let day = 0; day < 400; day += 1) {
+      const seed = seedForDay(day);
+      for (let row = 1; row <= DRY_LANES; row += 1) {
+        const shell = shellOf(laneAt(seed, row));
+        if (shell === null) continue;
+        expect(shell).toBeGreaterThanOrEqual(PLAYER_HALF_W - 1e-9);
+        expect(shell).toBeLessThanOrEqual(BOARD_WIDTH - PLAYER_HALF_W + 1e-9);
+      }
+    }
+  });
+
+  it("never buries a still lane's shell under a blocker", () => {
+    // AC #6, and the case the whole placement order exists for. A still lane's
+    // hazards never move, so a shell laid on top of one is a shell that simply
+    // cannot be had — an optional pickup quietly turned into an impossible one.
+    for (let day = 0; day < 400; day += 1) {
+      const seed = seedForDay(day);
+      for (let row = 1; row <= DRY_LANES; row += 1) {
+        const lane = laneAt(seed, row);
+        if (lane.kind !== "still" || lane.shell === null) continue;
+        for (const hazard of lane.hazards) {
+          const overlap =
+            Math.abs(lane.shell - hazard.center) <
+            hazard.halfWidth + SHELL_HALF_W;
+          expect(overlap).toBe(false);
+        }
+      }
+    }
+  });
+
+  it("leaves a drifting lane's shell clear at some phase of the cycle", () => {
+    // The guarantee is structural — a drifting lane's hazards sweep the whole
+    // board, so every point on it is under a gap eventually — but it is cheap
+    // to confirm rather than assert, and this is the acceptance criterion the
+    // spec singles out as needing its own test.
+    for (let day = 0; day < 120; day += 1) {
+      const seed = seedForDay(day);
+      for (let row = 1; row <= DRY_LANES; row += 1) {
+        const lane = laneAt(seed, row);
+        if (lane.kind !== "drift" || lane.shell === null) continue;
+
+        let clear = false;
+        for (let tick = 0; tick < 4_000 && !clear; tick += 1) {
+          clear = lane.hazards.every((hazard) => {
+            const center = hazardCenterAt(lane, hazard, tick);
+            // Wide enough that the crab standing on the shell is clear too,
+            // not merely the shell itself.
+            return (
+              Math.abs(center - lane.shell!) >= hazard.halfWidth + PLAYER_HALF_W
+            );
+          });
+        }
+        expect(clear).toBe(true);
+      }
+    }
+  });
+
+  it("never sits dead centre of the gap the player would already cross", () => {
+    // A pickup that costs nothing is not the optional risk the spec asks for.
+    let offset = 0;
+    let counted = 0;
+    for (let day = 0; day < 200; day += 1) {
+      const seed = seedForDay(day);
+      for (let row = 1; row <= DRY_LANES; row += 1) {
+        const lane = laneAt(seed, row);
+        if (lane.kind !== "still" || lane.shell === null) continue;
+        offset += Math.abs(lane.shell - BOARD_WIDTH / 2);
+        counted += 1;
+      }
+    }
+    expect(counted).toBeGreaterThan(0);
+    expect(offset / counted).toBeGreaterThan(PLAYER_HALF_W);
+  });
+
+  it("does not move with the tide", () => {
+    // Shells lie in the dry sand and the tide never reaches it, so a run's
+    // shell count is fixed the moment the day is.
+    const seed = seedForDay(7);
+    for (const elapsed of [0, TIDE_FULL_TICKS, TIDE_FULL_TICKS * 3]) {
+      for (let row = 1; row <= DRY_LANES; row += 1) {
+        expect(shellOf(laneAt(seed, row, elapsed))).toEqual(
+          shellOf(laneAt(seed, row, 0)),
+        );
+      }
     }
   });
 });

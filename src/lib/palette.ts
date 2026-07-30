@@ -132,6 +132,19 @@ export const PALETTE = {
    */
   driftMass: "#3f3f46",
 
+  /**
+   * A shell worth going out of the way for.
+   *
+   * Deliberately outside the family every hazard is drawn from. The walkers and
+   * towels are muted greys and tans on purpose, so that the only bright thing
+   * on the beach is the crab and the player always knows where they are. A
+   * shell is allowed to be the second bright thing because it is the only other
+   * thing they are ever asked to aim at — but it is pink rather than orange, so
+   * a glance can never mistake it for the crab.
+   */
+  shell: "#fbcfe8",
+  shellRidge: "#f472b6",
+
   /** The crab, standing. */
   crab: "#f97316",
   /** The crab, mid-step and unable to do anything about it. */

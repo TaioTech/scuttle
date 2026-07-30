@@ -3,6 +3,7 @@ import {
   type Beach,
   beachFor,
   laneAt,
+  shellCount,
   surfWashingAt,
 } from "./board";
 import {
@@ -27,6 +28,7 @@ import {
   formatElapsed,
   type Input,
   playerY,
+  shellsTaken,
   type SimState,
   stepSim,
 } from "./sim";
@@ -326,6 +328,7 @@ describe("the clock", () => {
     const lethal: Beach = () => ({
       kind: "still",
       hazards: [{ center: BOARD_WIDTH / 2, halfWidth: BOARD_WIDTH / 2 }],
+      shell: null,
     });
 
     const running = hold(createSim(), RIGHT, 50);
@@ -472,6 +475,7 @@ describe("the surf", () => {
         ? {
             kind: "still",
             hazards: [{ center: BOARD_WIDTH / 2, halfWidth: BOARD_WIDTH / 2 }],
+            shell: null,
           }
         : { kind: "surf" };
 
@@ -622,5 +626,66 @@ describe("the tide", () => {
     const late = beach(BEACH_LANES - 5, TIDE_FULL_TICKS);
     expect(early.kind).not.toBe(late.kind);
     expect(late.kind).toBe("surf");
+  });
+});
+
+describe("shells", () => {
+  /** One lane with a shell dead centre and nothing else anywhere. */
+  const WITH_SHELL: Beach = (row) =>
+    row === 1
+      ? { kind: "still", hazards: [], shell: BOARD_WIDTH / 2 }
+      : { kind: "safe" };
+
+  it("takes a shell the crab passes over", () => {
+    const state = hold(createSim(), IDLE, 4, WITH_SHELL);
+    expect(shellsTaken(state)).toBe(0);
+
+    const stepped = hold(
+      stepSim(state, FORWARD, WITH_SHELL),
+      IDLE,
+      STEP_TICKS,
+      WITH_SHELL,
+    );
+    expect(stepped.row).toBe(1);
+    expect(shellsTaken(stepped)).toBe(1);
+  });
+
+  it("leaves a shell the crab crossed wide of", () => {
+    let state: SimState = { ...createSim(), x: PLAYER_HALF_W };
+    state = hold(stepSim(state, FORWARD, WITH_SHELL), IDLE, STEP_TICKS, WITH_SHELL);
+    expect(state.row).toBe(1);
+    expect(shellsTaken(state)).toBe(0);
+  });
+
+  it("is worth one however many times the crab crosses it", () => {
+    // A wave can carry the crab back over ground it has already taken, so the
+    // count has to be per row rather than an increment on contact.
+    let state = hold(
+      stepSim(createSim(), FORWARD, WITH_SHELL),
+      IDLE,
+      STEP_TICKS,
+      WITH_SHELL,
+    );
+    expect(shellsTaken(state)).toBe(1);
+
+    state = { ...state, row: 0, step: null };
+    state = hold(
+      stepSim(state, FORWARD, WITH_SHELL),
+      IDLE,
+      STEP_TICKS,
+      WITH_SHELL,
+    );
+    expect(state.row).toBe(1);
+    expect(shellsTaken(state)).toBe(1);
+  });
+
+  it("never takes more than the day's beach is holding", () => {
+    const beach = beachFor(SEED);
+    let state = createSim();
+    for (let t = 0; t < 6_000; t += 1) {
+      state = stepSim(state, t % 40 === 0 ? FORWARD : t % 3 === 0 ? RIGHT : LEFT, beach);
+      if (!state.alive || state.won) break;
+    }
+    expect(shellsTaken(state)).toBeLessThanOrEqual(shellCount(SEED));
   });
 });
