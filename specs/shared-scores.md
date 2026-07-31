@@ -1,8 +1,8 @@
 # Shared scores across TaioTech apps
 
 > **Status**: Superseded on 2026-07-30 by the hub's shared player profile —
-> `TaioTech/taiotech` → [`specs/player-profile.md`](https://github.com/TaioTech/taiotech/blob/main/specs/player-profile.md),
-> with the integration contract in [`docs/PROFILE_INTEGRATION.md`](https://github.com/TaioTech/taiotech/blob/main/docs/PROFILE_INTEGRATION.md).
+> `TaioTech/taiotech` → [`specs/player-profile.md`](https://github.com/TaioTech/taiotech/blob/master/specs/player-profile.md),
+> with the integration contract in [`docs/PROFILE_INTEGRATION.md`](https://github.com/TaioTech/taiotech/blob/master/docs/PROFILE_INTEGRATION.md).
 > **Scope**: Larger than Scuttle. Touches the hub and every app that would use it.
 > **Date**: 2026-07-29
 

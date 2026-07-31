@@ -50,7 +50,7 @@ ledger unreachable the game is untouched, and a run that could not be sent is
 queued rather than lost.
 
 **The contract is documented once, in the hub's
-[`docs/PROFILE_INTEGRATION.md`](https://github.com/TaioTech/taiotech/blob/main/docs/PROFILE_INTEGRATION.md),
+[`docs/PROFILE_INTEGRATION.md`](https://github.com/TaioTech/taiotech/blob/master/docs/PROFILE_INTEGRATION.md),
 and deliberately not restated here.** Read it before changing anything in
 `src/lib/ledger.ts` or `src/components/ledgerStore.ts` — a contract copied into
 four repos is a contract that drifts, which is exactly what that file exists to
