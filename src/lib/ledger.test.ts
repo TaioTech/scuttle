@@ -140,9 +140,27 @@ describe("submissionFor", () => {
   });
 
   it("puts shells on the profile under their own name", () => {
-    expect(submissionFor(entry({ shells: 3 })).collectibles).toEqual({
-      shells: 3,
-    });
+    expect(submissionFor(entry({ shells: 3 })).collectibles.shells).toBe(3);
+  });
+
+  it("counts no win on a day the sea was never reached", () => {
+    expect(submissionFor(entry({ lanes: 9 })).collectibles.wins).toBe(0);
+  });
+
+  it("counts a win on a day the sea was reached", () => {
+    expect(submissionFor(entry({ ticks: 2_400 })).collectibles.wins).toBe(1);
+  });
+
+  it("counts one win a day however many times the sea was reached", () => {
+    // Retries are unlimited, so a per-run count would let an afternoon
+    // manufacture thirty wins and the total would stop meaning anything.
+    const twice = withRunToday(withRunToday([], won(2_400)), won(2_000));
+    expect(submissionFor(twice[0]).collectibles.wins).toBe(1);
+  });
+
+  it("keeps the win once a later loss lands on the same day", () => {
+    const thenLost = withRunToday(withRunToday([], won(2_400)), lost(4));
+    expect(submissionFor(thenLost[0]).collectibles.wins).toBe(1);
   });
 
   it("omits the crossing time when the sea was never reached", () => {

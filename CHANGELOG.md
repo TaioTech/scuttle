@@ -9,6 +9,22 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- A second collectible, `wins`, reported alongside `shells`: 1 on a day the sea
+  was reached and 0 otherwise. Nothing on the profile reflected reaching the sea
+  before this — the crossing time was being sent and stored but never read back,
+  and the profile's streak counts days *played* rather than days won, so a run
+  that died on lane one looked identical to one that finished.
+- **A win is per day, not per run.** Retries are unlimited, so counting every
+  winning run would let an afternoon manufacture thirty and the total would stop
+  meaning anything. Summed across days the number reads as days the sea was
+  reached, which is un-farmable by construction — the same reasoning that already
+  stops `liveStreak` treating two wins in one day as two days.
+- The name is deliberately plain rather than themed — `wins`, not `crossings` or
+  `seas`. These are raw facts a later rewards system is expected to compute on,
+  and a name that describes what happened outlasts one that describes this game's
+  decoration. Collectible names are permanent once shipped, so this was chosen
+  rather than defaulted into.
+
 - Reporting to the TaioTech hub's player-profile ledger, making Scuttle its
   first consumer. When a run resolves, the day's best — lanes crossed, the
   crossing time when the sea was reached, and the shells picked up — is sent to
