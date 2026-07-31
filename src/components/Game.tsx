@@ -15,7 +15,7 @@ import {
   serverBestSnapshot,
   subscribeBest,
 } from "./bestStore";
-import { flushLedger, submitRun } from "./ledgerStore";
+import { flushLedger, PROFILE_URL, submitRun } from "./ledgerStore";
 import { drainTicks } from "@/lib/loop";
 import { dayNumber, seedForDay } from "@/lib/rng";
 import { drawFrame, fitView, type View } from "@/lib/render";
@@ -380,6 +380,16 @@ export default function Game() {
                 {copied ? "Copied" : "Share"}
               </button>
             </div>
+
+            {/* A link rather than a third button. The two buttons are what a
+                player does next; this is where the days add up, and it should
+                not compete with playing again for the thumb. */}
+            <a
+              href={PROFILE_URL}
+              className="mt-1 text-xs tracking-wide text-muted underline decoration-line underline-offset-4 transition-colors hover:text-accent"
+            >
+              See your profile
+            </a>
           </div>
         )}
       </div>

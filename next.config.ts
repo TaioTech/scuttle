@@ -1,6 +1,8 @@
 import { execSync } from "node:child_process";
 import type { NextConfig } from "next";
 
+import { version } from "./package.json";
+
 /**
  * The commit this bundle was built from, baked in at build time.
  *
@@ -35,6 +37,14 @@ const nextConfig: NextConfig = {
     // NEXT_PUBLIC_ so it survives into the client bundle, which is where the
     // canvas and everything around it actually runs.
     NEXT_PUBLIC_BUILD: buildStamp(),
+    // The released version, from `package.json` rather than from a git tag.
+    // Tags are the wrong source here for a reason worth keeping: Vercel builds
+    // from a tarball with no git checkout, so `git describe` has nothing to read
+    // and would silently degrade to a fallback in exactly the environment the
+    // number matters most. `package.json` is committed, so it is always there.
+    // The release workflow keeps the two in step by bumping this file and
+    // tagging the same commit.
+    NEXT_PUBLIC_VERSION: version,
   },
 };
 
