@@ -1,6 +1,11 @@
 # Scuttle: the art still owed
 
-> **Status**: Draft
+> **Status**: Mostly built as of 2026-07-31 — the crab, the beachgoers, the
+>   towels and sunbathers, the seagull, the tide line, the surf and the shells
+>   are all drawn. Outstanding: the dog, and the frisbee, which was built,
+>   played and pulled on 2026-07-30 — see questions 6 and 7, which are the
+>   record of why both are still absent rather than a to-do list. The migration
+>   to authored pixel art remains deferred, not rejected.
 > **Extends**: [`scuttle.md`](scuttle.md) and [`finish-line.md`](finish-line.md) —
 >   neither specifies how its hazards and bands should look
 > **Date**: 2026-07-29

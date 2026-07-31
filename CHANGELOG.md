@@ -7,6 +7,37 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Fixed
+
+- The release job never ran after the default branch was renamed `main` →
+  `master`. Its guard named `main` outright, so it was skipped on every push —
+  and a skipped job still appears in the checks list reporting "skipping", which
+  is the worst way for a release step to fail. It now keys off the repository's
+  actual default branch, so the next rename cannot repeat this.
+- The `v0.2.0` bump was stranded on `main` and never reached `master`, so
+  production kept reporting `v0.1.0` while two features shipped past it, and the
+  tag pointed at a commit outside the release branch's history.
+
+### Changed
+
+- Docs brought back in line with what the game actually is. `README.md` no
+  longer describes a Phase 1 movement prototype: it had the tide, the surf, the
+  seagull, the shells, the end-of-run result, the streak and sharing listed as
+  unbuilt, and claimed the lanes ran on indefinitely with no sea to reach. All
+  of that shipped. `AGENTS.md` claimed streaks and sharing did not exist, which
+  had been false since they were built.
+- Spec status blocks say what is built and what is not, rather than all reading
+  `Draft` regardless. The reasoning and decision logs in them are untouched —
+  they are the record of why, and stay that way.
+- `AGENTS.md` documents that the commit type on a merge now decides the version,
+  which it did not before, and that `package.json`'s `version` is CI's to write.
+
+## [0.2.0] — 2026-07-31
+
+The first tagged release. It carries everything built up to this point — the
+game, the finish line, the art, and the hub integration — because tagging only
+started here.
+
 ### Added
 
 - A second collectible, `wins`, reported alongside `shells`: 1 on a day the sea
