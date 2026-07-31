@@ -32,3 +32,62 @@ jobs:
       - run: npm run test
 
       - run: npm run build
+
+  # Bumps the version and tags the commit, on main only and only once the four
+  # gates above have passed — a tag that points at a broken build is worse than
+  # no tag, and `needs` is what makes that impossible rather than unlikely.
+  #
+  # The bump comes from the merged commit's conventional-commit type, which this
+  # repo already writes: `feat` earns a minor, a breaking marker earns a major,
+  # and everything else earns a patch. Docs- and chore-only merges are skipped
+  # entirely, so reading the changelog never turns up three versions that changed
+  # nothing a player could see.
+  release:
+    name: Version and tag
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Work out the bump
+        id: bump
+        env:
+          # Through the environment rather than interpolated into the script: a
+          # commit message is arbitrary text, and pasting it into a shell is how
+          # a backtick in a summary line becomes a command.
+          SUBJECT: ${{ github.event.head_commit.message }}
+        run: |
+          subject="${SUBJECT%%$'\n'*}"
+          body="$SUBJECT"
+
+          if printf '%s' "$body" | grep -qE '^BREAKING[ -]CHANGE:' \
+            || printf '%s' "$subject" | grep -qE '^[a-z]+(\([^)]*\))?!:'; then
+            echo "type=major" >> "$GITHUB_OUTPUT"
+          elif printf '%s' "$subject" | grep -qE '^feat(\([^)]*\))?:'; then
+            echo "type=minor" >> "$GITHUB_OUTPUT"
+          elif printf '%s' "$subject" | grep -qE '^(fix|perf|refactor|style)(\([^)]*\))?:'; then
+            echo "type=patch" >> "$GITHUB_OUTPUT"
+          else
+            echo "type=none" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Bump and tag
+        if: steps.bump.outputs.type != 'none'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # `npm version` writes package.json, commits, and tags in one step, so
+          # the tag and the number the game displays cannot disagree.
+          npm version "${{ steps.bump.outputs.type }}" \
+            -m "chore(release): v%s [skip ci]"
+          git push --follow-tags

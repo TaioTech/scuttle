@@ -35,9 +35,19 @@ const KEY = "scuttle.ledger.v1";
  * spans it — which leaves local hostnames under a shared parent, or production.
  * The hub's README carries the `/etc/hosts` setup for the local case.
  */
-const ENDPOINT = `${
-  process.env.NEXT_PUBLIC_LEDGER_ORIGIN ?? "https://taiotech.com"
-}/api/results`;
+export const HUB_ORIGIN =
+  process.env.NEXT_PUBLIC_LEDGER_ORIGIN ?? "https://taiotech.com";
+
+const ENDPOINT = `${HUB_ORIGIN}/api/results`;
+
+/**
+ * Where a player goes to see what this game has reported.
+ *
+ * Built from the same origin as the submission rather than hard-coded, so a
+ * local hub is linked to as readily as the real one — a link that always points
+ * at production is a link that lies during development.
+ */
+export const PROFILE_URL = `${HUB_ORIGIN}/profile`;
 
 function read(): DayBest[] {
   try {

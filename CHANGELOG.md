@@ -24,6 +24,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
   and a name that describes what happened outlasts one that describes this game's
   decoration. Collectible names are permanent once shipped, so this was chosen
   rather than defaulted into.
+- A readable version in the footer, next to the commit stamp — a version and a
+  short commit side by side, rather than a bare hash. Both are kept because they
+  answer different questions:
+  the version says which release you are on, and the commit says which build,
+  which a version that only moves on release cannot tell you mid-iteration. The
+  number comes from `package.json` rather than a git tag, because Vercel builds
+  from a tarball with no git checkout and `git describe` would silently fall back
+  to a placeholder in the one environment where the number matters most.
+- Releases are versioned and tagged by CI on merge to `main`, from the merged
+  commit's conventional-commit type — `feat` earns a minor, a breaking marker a
+  major, and `fix`/`perf`/`refactor`/`style` a patch. Docs- and chore-only merges
+  are skipped, so the tag history does not fill with versions that changed
+  nothing a player could see. The job runs behind `needs: verify`, so a tag
+  cannot come to point at a build that failed its gates.
+- A link to the profile from the result screen, so the day just played leads to
+  where the days add up. A link rather than a third button: the two buttons are
+  what a player does next, and this should not compete with playing again for
+  the thumb.
 
 - Reporting to the TaioTech hub's player-profile ledger, making Scuttle its
   first consumer. When a run resolves, the day's best — lanes crossed, the
