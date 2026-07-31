@@ -1,10 +1,35 @@
 # Shared scores across TaioTech apps
 
-> **Status**: Idea — deferred, not scheduled
+> **Status**: Superseded on 2026-07-30 by the hub's shared player profile —
+> `TaioTech/taiotech` → [`specs/player-profile.md`](https://github.com/TaioTech/taiotech/blob/main/specs/player-profile.md),
+> with the integration contract in [`docs/PROFILE_INTEGRATION.md`](https://github.com/TaioTech/taiotech/blob/main/docs/PROFILE_INTEGRATION.md).
 > **Scope**: Larger than Scuttle. Touches the hub and every app that would use it.
 > **Date**: 2026-07-29
 
-## What this is
+## What superseded it
+
+The hub grew a backend, one identity per player spanning every `taiotech.com`
+subdomain, and a ledger each game writes its own collectibles into. Scuttle is
+its first consumer: a run's day is reported after it resolves, and the shells go
+on a profile the hub shows.
+
+Most of what this document called for arrived intact — a service owned by the
+hub rather than by any one game, anonymous-first identity, each app keeping its
+local record as the source of truth, and the whole thing additive enough that
+losing it costs the profile and never the game. Two things went the other way and
+are worth keeping straight:
+
+- **Open question 1 was answered "per-app with a shared identity"**, not a global
+  board. Boards are still deferred, and for the reason this document gave.
+- **Open question 2 was answered "it trusts"**, and says so plainly on the
+  profile surface. Replay validation stays affordable because both games' sims
+  are still deterministic — which is the property this document said was worth
+  protecting while unbuilt, and it still is.
+
+The rest of this file is kept as the record of the deferral and the reasoning
+that led there. It is history, not a plan.
+
+## What this was
 
 A record of an idea, not a plan to build one. Scuttle wants a persistent high
 score board. The interesting version of that is not Scuttle's alone: it is a

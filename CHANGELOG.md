@@ -9,6 +9,24 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Reporting to the TaioTech hub's player-profile ledger, making Scuttle its
+  first consumer. When a run resolves, the day's best — lanes crossed, the
+  crossing time when the sea was reached, and the shells picked up — is sent to
+  the hub, where the shells go on a profile spanning every game in the arcade. The
+  contract is the hub's `docs/PROFILE_INTEGRATION.md` and is linked to rather
+  than restated, because a contract copied into four repos drifts in four
+  directions.
+- A per-day best, kept separately from the personal best on the device. The
+  local record is a lifetime high-water mark and the ledger wants the day's, and
+  submitting the former would attribute shells to days they were not found on
+  and inflate a profile total that sums across days. Submitting the day's own best
+  is also what makes a duplicate or retried submission harmless by construction
+  rather than by bookkeeping.
+- A queue for submissions that could not be sent, retried when the game is next
+  opened. Play never waits on the ledger and a failure is silent to the player
+  mid-run: with the service genuinely unreachable a run plays start to finish
+  unchanged, and what could not be sent is not lost from the device either.
+
 - This repository. Phase 1 was built inside the TaioTech hub repository at
   `scuttle/` because this one did not exist yet; it now lives here with that
   history intact, and deploys to scuttle.taiotech.com.
@@ -227,6 +245,14 @@ and the project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- `AGENTS.md` and `README.md` no longer describe this repo as having nothing
+  behind it. Its own local storage remains the source of truth for its own
+  screens — nothing here reads back from the hub — but it is no longer purely
+  local-first, and orientation that says otherwise sends the next session down
+  the wrong path.
+- `specs/shared-scores.md` marked superseded and pointed at the hub's
+  `specs/player-profile.md`, rather than continuing to describe a shared score
+  service as deferred when one exists and this game writes to it.
 - The crab's claws straddle the edge of its shell rather than being held well
   outboard of it. They were solid mass two and a half board units past the box
   on each side, which made the crab read some forty per cent wider than the
