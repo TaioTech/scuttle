@@ -30,9 +30,17 @@ reports to it. See the hub's `docs/WORKSHOP.md` for how the repos relate.
 ## The ledger
 
 This repo is no longer purely local-first. After a run resolves, Scuttle reports
-the day to the hub's player-profile ledger, which is where a player's shells
-show up on a profile spanning every TaioTech game. Scuttle is the ledger's first
-consumer.
+the day to the hub's player-profile ledger, which is where a player's shells and
+wins show up on a profile spanning every TaioTech game. Scuttle is the ledger's
+first consumer.
+
+**Two collectibles, both raw facts rather than points.** `shells` is the most
+taken in one run that day; `wins` is 1 on a day the sea was reached and 0
+otherwise. Neither is a score, and neither is themed — a later rewards system is
+expected to compute on these, and a name describing what happened outlasts one
+describing this game's decoration. **A win is per day, not per run**: retries
+are unlimited, so a per-run count could be farmed in an afternoon, which is the
+same reason `liveStreak` refuses to treat two wins in one day as two days.
 
 **What has not changed is what the game reads.** `scuttle.best.v1` in this
 device's local storage remains the source of truth for every screen this game

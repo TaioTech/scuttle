@@ -27,12 +27,18 @@ import type { Run } from "./records";
 export const LEDGER_GAME = "scuttle";
 
 /**
- * The collectible's name on the profile.
+ * The collectibles' names on the profile.
  *
- * Permanent once shipped. Renaming it does not migrate the rows already stored
+ * Permanent once shipped. Renaming one does not migrate the rows already stored
  * under the old name, so the profile would show both and neither would be whole.
+ *
+ * `wins` is deliberately plain rather than themed — no "crossings", no "seas".
+ * These names are raw facts a later rewards system is expected to compute on,
+ * and a name that describes what happened outlasts one that describes this
+ * game's decoration.
  */
 export const SHELL_COLLECTIBLE = "shells";
+export const WIN_COLLECTIBLE = "wins";
 
 /** The range the ledger accepts a day number in. Anything else is a 400 forever. */
 const MIN_DAY = 1;
@@ -158,6 +164,14 @@ export function pendingDays(days: readonly DayBest[]): DayBest[] {
  * `metrics` and `collectibles` must be flat objects of finite numbers, so the
  * unreached sea is an absent key rather than a null — and its absence is what
  * says the sea was never reached, since there is no boolean to say it with.
+ *
+ * A win is one per *day*, not one per run. Retries are unlimited, so counting
+ * every winning run would let an afternoon manufacture thirty of them and the
+ * total would stop meaning anything — the same reasoning that already stops
+ * {@link import("./records").liveStreak} treating two wins in one day as two
+ * days. Summed across days by the profile, this reads as the number of days the
+ * sea was reached, which is the fact a later rewards system would want and the
+ * one a player cannot farm.
  */
 export function submissionFor(entry: DayBest): Submission {
   const metrics: Record<string, number> = { lanes: entry.lanes };
@@ -167,7 +181,10 @@ export function submissionFor(entry: DayBest): Submission {
     game: LEDGER_GAME,
     day: entry.day,
     metrics,
-    collectibles: { [SHELL_COLLECTIBLE]: entry.shells },
+    collectibles: {
+      [SHELL_COLLECTIBLE]: entry.shells,
+      [WIN_COLLECTIBLE]: entry.ticks === null ? 0 : 1,
+    },
   };
 }
 
