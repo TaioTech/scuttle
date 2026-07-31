@@ -1,7 +1,12 @@
 # Scuttle
 
-> **Status**: Draft
-> **Dependencies**: `TaioTech/app-template` (this is one of its first consumers)
+> **Status**: Largely built as of 2026-07-31. Outstanding: the two pursuing
+>   hazards (the dog, and the frisbee — built, played and pulled; see
+>   [`sprites.md`](sprites.md) questions 6 and 7) and the one-run-a-day limit,
+>   deliberately unenforced while the game is still being tuned.
+> **Dependencies**: none outstanding. This was written expecting
+>   `TaioTech/app-template`, which still does not exist — the scaffolding was
+>   copied from the hub's conventions instead, and nothing here waits on it.
 > **Date**: 2026-07-29
 
 ## Summary

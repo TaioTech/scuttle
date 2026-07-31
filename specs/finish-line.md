@@ -1,6 +1,10 @@
 # Scuttle: the finish line
 
-> **Status**: Draft
+> **Status**: Built as of 2026-07-30 — the thirty-two-lane beach, the sea, the
+>   tide, the surf, the shells, the results screen, the personal best and the
+>   streak all shipped. The summary below describes the endless beach this
+>   replaced; it is kept as the problem statement, not as a description of the
+>   game.
 > **Extends**: [`scuttle.md`](scuttle.md) — settles its Open Question #3
 > **Date**: 2026-07-29
 

@@ -16,13 +16,23 @@ across the beach is fast and fluid while moving down it is slow and committed.
 One seeded run a day, identical for everyone, derived from the date, and
 playable with nothing behind it.
 
-The spec lives at [`specs/scuttle.md`](specs/scuttle.md). The movement, the
-seeded lanes, the tide, the surf, the seagull, the shells and the results screen
-are built. **The two pursuing hazards are not**: the dog was deferred before it
-shipped, and the frisbee was built, played, and pulled on 2026-07-30 for the
-same reason — see question 6 and question 7 in
-[`specs/sprites.md`](specs/sprites.md). Streaks and sharing are specified and do
-not exist. Read the spec before assuming a missing thing is an oversight.
+The spec lives at [`specs/scuttle.md`](specs/scuttle.md). Built: the movement,
+the seeded lanes, the tide, the surf, the seagull, the shells, the results
+screen, the personal best, the streak, sharing, and reporting to the hub's
+ledger.
+
+Genuinely not built, and specified:
+
+- **The two pursuing hazards.** The dog was deferred before it shipped, and the
+  frisbee was built, played, and pulled on 2026-07-30 for the same reason — see
+  question 6 and question 7 in [`specs/sprites.md`](specs/sprites.md).
+- **The one-run-a-day limit.** Retries are unlimited on purpose: a prototype
+  that can be played once a day cannot be tuned. Enough else depends on this
+  that it is a gotcha rather than a footnote — the streak and the `wins`
+  collectible are both per-day precisely because a per-run count would be
+  farmable while this stands.
+
+Read the spec before assuming a missing thing is an oversight.
 
 Scuttle links back to the hub at taiotech.com, and since 2026-07-30 it also
 reports to it. See the hub's `docs/WORKSHOP.md` for how the repos relate.
@@ -188,6 +198,25 @@ with a pure module under `lib/` that holds the actual rules.
 - TSDoc on exported types and functions.
 - Commit messages: `type(scope): summary`, lowercase, imperative. Types in use:
   `feat`, `fix`, `docs`, `refactor`, `style`, `chore`, `spec`.
+
+## Releases
+
+The default branch is `master`, and merging to it is what ships: Vercel deploys
+it, and CI bumps the version and tags the commit.
+
+**The commit type on a merge now decides the version**, which it did not before —
+`feat` earns a minor, a `!` marker or `BREAKING CHANGE:` earns a major,
+`fix`/`perf`/`refactor`/`style` earn a patch, and `docs`/`chore` earn nothing, so
+a docs merge does not mint a version that changed nothing a player could see.
+
+Two things follow. **Do not hand-edit `version` in `package.json`** — CI owns it,
+and an edit races the bot. And a squash-merge title is what gets read, so a
+`feat` branch landing under a `chore` title silently skips its release.
+
+The number in the footer comes from `package.json` rather than a git tag,
+because Vercel builds from a tarball with no git checkout and `git describe`
+would degrade to a placeholder in exactly the environment where the number
+matters most.
 
 ## Definition of Done
 
