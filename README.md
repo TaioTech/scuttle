@@ -48,6 +48,25 @@ npm run test       # vitest run
 
 All four must pass before anything is called done.
 
+## The profile
+
+When a run ends, Scuttle reports that day to the [TaioTech
+hub](https://taiotech.com)'s player-profile ledger — the day's best rather than
+the last run, with the shells picked up. They appear on the profile the hub shows
+for whoever is playing, alongside whatever the other games in the arcade have
+minted.
+
+**Play is unaffected when the ledger is unreachable.** Nothing waits on a
+submission and a failure is silent: offline, or with the service down, a run
+plays start to finish exactly as it always did. The personal best and the streak
+live in this device's local storage and are never read back from the hub, so the
+game's own screens do not depend on the ledger at all. A run that could not be
+sent is queued and tried again the next time the game is opened.
+
+`NEXT_PUBLIC_LEDGER_ORIGIN` points submissions somewhere other than
+`https://taiotech.com`, which is what local development against a hub on another
+hostname needs.
+
 ## Where it lives
 
 Source is [`TaioTech/scuttle`](https://github.com/TaioTech/scuttle); the

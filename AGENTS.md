@@ -13,8 +13,8 @@ Orientation for agents working on Scuttle.
 Scuttle is a lane-crossing arcade game for the phone: a crab crossing a beach.
 It is Frogger's shape with one mechanic changed — crabs walk sideways, so moving
 across the beach is fast and fluid while moving down it is slow and committed.
-One seeded run a day, identical for everyone, derived from the date, with no
-backend.
+One seeded run a day, identical for everyone, derived from the date, and
+playable with nothing behind it.
 
 The spec lives at [`specs/scuttle.md`](specs/scuttle.md). The movement, the
 seeded lanes, the tide, the surf, the seagull, the shells and the results screen
@@ -24,8 +24,38 @@ same reason — see question 6 and question 7 in
 [`specs/sprites.md`](specs/sprites.md). Streaks and sharing are specified and do
 not exist. Read the spec before assuming a missing thing is an oversight.
 
-Scuttle links back to the hub at taiotech.com and is otherwise independent of
-it. See the hub's `docs/WORKSHOP.md` for how the repos relate.
+Scuttle links back to the hub at taiotech.com, and since 2026-07-30 it also
+reports to it. See the hub's `docs/WORKSHOP.md` for how the repos relate.
+
+## The ledger
+
+This repo is no longer purely local-first. After a run resolves, Scuttle reports
+the day to the hub's player-profile ledger, which is where a player's shells
+show up on a profile spanning every TaioTech game. Scuttle is the ledger's first
+consumer.
+
+**What has not changed is what the game reads.** `scuttle.best.v1` in this
+device's local storage remains the source of truth for every screen this game
+draws — the personal best, the streak, the result overlay. Nothing here ever
+reads back from the hub. The reporting is additive in the strict sense: with the
+ledger unreachable the game is untouched, and a run that could not be sent is
+queued rather than lost.
+
+**The contract is documented once, in the hub's
+[`docs/PROFILE_INTEGRATION.md`](https://github.com/TaioTech/taiotech/blob/main/docs/PROFILE_INTEGRATION.md),
+and deliberately not restated here.** Read it before changing anything in
+`src/lib/ledger.ts` or `src/components/ledgerStore.ts` — a contract copied into
+four repos is a contract that drifts, which is exactly what that file exists to
+prevent. The five rules it lists are load-bearing, and the one that breaks
+silently is `credentials: 'include'`: without it every submission mints a fresh
+anonymous player and the profile fragments with nothing erroring anywhere.
+
+`NEXT_PUBLIC_LEDGER_ORIGIN` overrides where submissions go, defaulting to
+`https://taiotech.com`. It exists because cross-subdomain identity cannot be
+exercised on a preview deployment at all — `vercel.app` is on the Public Suffix
+List, so no cookie spans it — which leaves local hostnames under a shared parent
+or production, and nothing in between. The hub's README carries the `/etc/hosts`
+setup.
 
 ## Commands
 
@@ -72,12 +102,17 @@ then plays three thousand ticks.
    function of the interpolated tick. Nothing here may hold a counter of its
    own: a renderer that accumulates its own phase drifts between devices, and
    the whole point of the daily is that two people see the same beach.
+8. `records.ts` — what the device remembers between runs, and what counts as a
+   record. `ledger.ts` — what the hub is told, and how a finished run folds into
+   the day's submission. Both are rules with no storage and no network in them.
 
-**`src/components/` has the clock.** `Game.tsx` owns the
+**`src/components/` has the clock, and the surroundings.** `Game.tsx` owns the
 `requestAnimationFrame` accumulator and the canvas; `Controls.tsx` is three
 buttons. Input goes into a ref, never into React state — a held button is a
 sixty-times-a-second event and putting it in state re-renders the tree on every
-frame of it.
+frame of it. `bestStore.ts` is the only code that touches `localStorage` for the
+record, and `ledgerStore.ts` is the only code that talks to the hub — both pair
+with a pure module under `lib/` that holds the actual rules.
 
 ## Gotchas
 
@@ -124,6 +159,14 @@ frame of it.
   throttled alongside it. The symptom is a game that looks broken in exactly the
   way a real bug would: a blank canvas, a frozen counter, and input that does
   nothing. Bring the pane to the front before believing any of it.
+- **The record on the device is a lifetime high-water mark; the ledger wants the
+  day's.** `scuttle.best.v1` holds the most shells ever taken in one run, across
+  every day. Submitting that number is the easy mistake and it is invisible
+  locally: the profile sums a collectible across days, so a lifetime maximum
+  resubmitted every day inflates a total nobody can reconcile — and it attributes
+  shells to a day they were not found on. `src/lib/ledger.ts` keeps a separate
+  per-day best for exactly this reason, and the two records are not
+  interchangeable.
 - **`STILL_LANE_CHANCE` and the lane rhythm change the beach.** Every constant
   in `constants.ts` is part of the seed's meaning: changing one changes what
   every past day would have been. Before a ship, that is free. Afterwards it is

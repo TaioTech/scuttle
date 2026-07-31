@@ -15,6 +15,7 @@ import {
   serverBestSnapshot,
   subscribeBest,
 } from "./bestStore";
+import { flushLedger, submitRun } from "./ledgerStore";
 import { drainTicks } from "@/lib/loop";
 import { dayNumber, seedForDay } from "@/lib/rng";
 import { drawFrame, fitView, type View } from "@/lib/render";
@@ -89,6 +90,14 @@ export default function Game() {
   const hold = useCallback((control: Control, down: boolean) => {
     held.current[control] = down;
     if (control === "forward" && down) tapped.current = true;
+  }, []);
+
+  // A day that never reached the hub goes again when the player comes back.
+  // Safe to repeat: the ledger keys on player, game and day, and what is sent
+  // is the day's best, so a duplicate lands on the same row with the same
+  // numbers.
+  useEffect(() => {
+    flushLedger();
   }, []);
 
   useEffect(() => {
@@ -216,6 +225,10 @@ export default function Game() {
           day,
         };
         const improved = recordRun(finished);
+        // After the local write, and never awaited: the record on this device
+        // is the source of truth for every screen here, and the hub hearing
+        // about the day is additive. A submission that fails is silent.
+        submitRun(finished);
         setResult({
           ...finished,
           improved,
